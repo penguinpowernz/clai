@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -58,6 +59,12 @@ Run without arguments to enter interactive mode, or provide a message to send im
 			return initConfig()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			f, err := os.OpenFile("clai.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open log file: %w", err)
+			}
+			defer f.Close()
+			log.SetOutput(f)
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
