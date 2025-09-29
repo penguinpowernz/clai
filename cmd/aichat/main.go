@@ -1,0 +1,149 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
+	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/aichat/internal/ai"
+	"github.com/penguinpowernz/aichat/internal/chat"
+)
+
+var (
+	version = "dev"
+	cfgFile string
+)
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	// Setup context with cancellation for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle interrupts
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Println("\nReceived interrupt signal, shutting down...")
+		cancel()
+	}()
+
+	rootCmd := newRootCommand(ctx)
+	return rootCmd.Execute()
+}
+
+func newRootCommand(ctx context.Context) *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "aichat [message]",
+		Short: "AI-powered coding assistant",
+		Long: `A CLI tool for AI-assisted coding using Claude or other LLMs.
+Helps you write, refactor, and debug code through conversational AI.
+
+Run without arguments to enter interactive mode, or provide a message to send immediately.`,
+		Version: version,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return initConfig()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			aiClient, err := ai.NewClient(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to create AI client: %w", err)
+			}
+
+			session := chat.NewSession(cfg, aiClient)
+
+			// If message provided, send it and exit (or continue in interactive mode)
+			if len(args) > 0 {
+				message := args[0]
+				singleShot, _ := cmd.Flags().GetBool("single")
+
+				if err := session.SendMessage(ctx, nil, message); err != nil {
+					return err
+				}
+
+				// If single-shot mode, exit after first message
+				if singleShot {
+					return nil
+				}
+			}
+
+			// Enter interactive mode
+			return session.InteractiveMode(ctx, nil)
+		},
+	}
+
+	// Global flags
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.aichat.yml)")
+	rootCmd.PersistentFlags().String("model", "", "AI model to use (e.g., claude-sonnet-4-20250514)")
+	rootCmd.PersistentFlags().String("provider", "", "AI provider (anthropic, openai)")
+	rootCmd.PersistentFlags().Bool("verbose", false, "verbose output")
+	rootCmd.PersistentFlags().Bool("no-color", false, "disable colored output")
+
+	// Chat-specific flags
+	rootCmd.Flags().StringSliceP("files", "f", []string{}, "files to include in context")
+	rootCmd.Flags().Bool("stream", true, "stream responses")
+	rootCmd.Flags().Bool("no-git", false, "disable git integration")
+	rootCmd.Flags().BoolP("single", "s", false, "single-shot mode (exit after first response)")
+	rootCmd.Flags().Bool("auto-apply", false, "automatically apply code changes without confirmation")
+
+	// Bind flags to viper
+	viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))
+	viper.BindPFlag("provider", rootCmd.PersistentFlags().Lookup("provider"))
+	viper.BindPFlag("verbose", rootCmd.PersistentFlags().Lookup("verbose"))
+	viper.BindPFlag("no_color", rootCmd.PersistentFlags().Lookup("no-color"))
+
+	return rootCmd
+}
+
+func initConfig() error {
+	if cfgFile != "" {
+		viper.SetConfigFile(cfgFile)
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+
+		// Search for config in home directory
+		viper.AddConfigPath(home)
+		viper.SetConfigType("yaml")
+		viper.SetConfigName(".aichat")
+
+		// Also check XDG config directory
+		configDir, err := os.UserConfigDir()
+		if err == nil {
+			viper.AddConfigPath(configDir + "/aichat")
+		}
+	}
+
+	// Read environment variables
+	viper.SetEnvPrefix("AICHAT")
+	viper.AutomaticEnv()
+
+	// Read config file (ignore not found errors)
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return err
+		}
+	}
+
+	return nil
+}
