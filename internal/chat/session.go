@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -26,28 +27,66 @@ type Session struct {
 	files      *files.Context
 	workingDir string
 	tools      []tools.Tool
+
+	onSystemMsg func(msg string)
 }
 
 func NewSession(cfg *config.Config, client ai.AIProvider) *Session {
 	wd, _ := os.Getwd()
-
+	tt := tools.GetAvailableTools()
+	client.SetTools(tt)
 	return &Session{
-		config:     cfg,
-		client:     client,
-		messages:   make([]ai.Message, 0),
-		files:      files.NewContext(cfg),
-		workingDir: wd,
-		tools:      tools.GetAvailableTools(),
+		config:      cfg,
+		client:      client,
+		messages:    make([]ai.Message, 0),
+		files:       files.NewContext(cfg),
+		workingDir:  wd,
+		tools:       tt,
+		onSystemMsg: func(msg string) {},
 	}
 }
 
+func (s *Session) OnSystemMsg(f func(msg string)) {
+	s.onSystemMsg = f
+}
+
 // ProcessToolUses handles tool calls from the AI
-func (s *Session) ProcessToolUses(toolUses []tools.ToolUse) []tools.ToolResult {
-	results := make([]tools.ToolResult, len(toolUses))
-	for i, toolUse := range toolUses {
-		results[i] = tools.ExecuteTool(s.config, toolUse, s.workingDir)
+func (s *Session) ProcessToolUses(toolCall *ai.ToolCall) []tools.ToolResult {
+	if !tools.IsValid(s.tools, toolCall.Name) {
+		log.Println("Invalid tool use:", toolCall.Name)
+
+		s.onSystemMsg(fmt.Sprintf("The LLM tried to use an invalid tool: %s", toolCall.Name))
+
+		s.messages = append(s.messages, ai.Message{
+			Role:       "user",
+			ToolCallID: toolCall.ID,
+			Content:    "There is no tool named " + toolCall.Name + ", valid tools are: " + strings.Join(tools.GetNames(s.tools), ", "),
+		})
+
+		res, err := s.client.SendMessage(context.Background(), s.messages)
+		if err != nil {
+			log.Println("Error sending message about invalid tool use:", err)
+			return nil
+		}
+
+		if res.Content == "" {
+			log.Println("Empty response to message about invalid tool use")
+			return nil
+		}
+
+		s.messages = append(s.messages, ai.Message{
+			Role:    "assistant",
+			Content: res.Content,
+		})
+
+		return nil
 	}
-	return results
+
+	// results := make([]tools.ToolResult, len(toolUses))
+	// for i, toolUse := range toolUses {
+	// 	results[i] = tools.ExecuteTool(s.config, toolUse, s.workingDir)
+	// }
+	return nil
 }
 
 // InteractiveMode starts the bubbletea REPL
@@ -78,9 +117,12 @@ func (s *Session) SendMessage(ctx context.Context, terminal interface{}, message
 	var response strings.Builder
 	for chunk := range stream {
 		fmt.Print(chunk)
-		response.WriteString(chunk)
+		response.WriteString(chunk.String())
+		if chunk.IsToolCall() {
+			fmt.Printf("THE LLM WANTS TO USE A TOOL %+v", chunk.ToolCall)
+		}
 	}
-	fmt.Println()
+	fmt.Println("heyo")
 
 	s.messages = append(s.messages, ai.Message{
 		Role:    "assistant",
@@ -102,8 +144,8 @@ type chatModel struct {
 	err           error
 	width         int
 	height        int
-	currentStream strings.Builder
-	streamChan    <-chan string // Keep reference to the stream channel
+	currentStream *strings.Builder
+	streamChan    <-chan ai.MessageChunk // Keep reference to the stream channel
 }
 
 type chatMessage struct {
@@ -134,16 +176,19 @@ func newChatModel(session *Session, ctx context.Context) chatModel {
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	return chatModel{
-		session:  session,
-		ctx:      ctx,
-		textarea: ta,
-		viewport: vp,
-		spinner:  sp,
-		messages: make([]chatMessage, 0),
+		session:       session,
+		ctx:           ctx,
+		textarea:      ta,
+		viewport:      vp,
+		spinner:       sp,
+		messages:      make([]chatMessage, 0),
+		currentStream: &strings.Builder{},
 	}
 }
 
 func (m chatModel) Init() tea.Cmd {
+	// m.session.OnSystemMsg(func(msg string) { m.Update(streamErrMsg{err: errors.New(msg)}) })
+	m.session.OnSystemMsg(func(msg string) { m.Update(systemMsg(msg)) })
 	return textarea.Blink
 }
 
@@ -234,6 +279,16 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start reading next chunks
 		return m, m.readNextChunk()
 
+	case systemMsg:
+		log.Println("the UI got a new system message:", string(msg))
+		m.messages = append(m.messages, chatMessage{
+			role:    "system",
+			content: string(msg),
+		})
+
+		m.viewport.SetContent(m.renderMessages())
+		m.viewport.GotoBottom()
+
 	case streamChunkMsg:
 		// Append chunk to current stream
 		m.currentStream.WriteString(string(msg))
@@ -272,6 +327,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case streamErrMsg:
+		log.Println("UI got an error:", msg.err)
 		m.err = msg.err
 		m.waiting = false
 		m.viewport.SetContent(m.renderMessages())
@@ -320,15 +376,22 @@ func (m chatModel) startStreaming() tea.Cmd {
 			return streamDoneMsg{} // Stream ended immediately
 		}
 
+		if chunk.IsToolCall() {
+			m.session.ProcessToolUses(chunk.ToolCall)
+			return streamDoneMsg{}
+		}
+
 		// We need to pass the stream to subsequent reads
 		// Store it via a message that includes the channel
-		return streamStartMsg{stream: stream, firstChunk: string(chunk)}
+		return streamStartMsg{stream: stream, firstChunk: chunk.String()}
 	}
 }
 
+type systemMsg string
+
 // streamStartMsg carries the stream channel and first chunk
 type streamStartMsg struct {
-	stream     <-chan string
+	stream     <-chan ai.MessageChunk
 	firstChunk string
 }
 
@@ -340,7 +403,7 @@ func (m chatModel) readNextChunk() tea.Cmd {
 		if !ok {
 			return streamDoneMsg{} // Stream ended
 		}
-		return streamChunkMsg(chunk)
+		return streamChunkMsg(chunk.String())
 	}
 }
 
@@ -362,6 +425,10 @@ func (m chatModel) renderMessages() string {
 			if msg.role == "assistant-streaming" {
 				b.WriteString(cursorStyle.Render("▋"))
 			}
+			b.WriteString("\n\n")
+		case "system":
+			b.WriteString(systemStyle.Render("System: "))
+			b.WriteString(msg.content)
 			b.WriteString("\n\n")
 		}
 	}
@@ -387,6 +454,10 @@ var (
 
 	assistantStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("212")).
+			Bold(true)
+
+	systemStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("21")).
 			Bold(true)
 
 	cursorStyle = lipgloss.NewStyle().

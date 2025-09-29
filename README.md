@@ -79,6 +79,7 @@ In order of priority.
 - [x] specify system prompt in the config file
 - [x] specify settings including model and URL in config file
 - [x] working chat with ollama models
+- [ ] get errors and system messages showing in the UI
 - [ ] send files in prompt when `@filename` is in the prompt
 - [ ] add `search_file` and `list_files` tools
 - [ ] ask for permission for the AI to use tools
@@ -88,6 +89,7 @@ In order of priority.
 - [ ] add `/clear` command to reset the prompt
 - [ ] add `/quit` command to exit
 - [ ] save chat history to file
+- [ ] add `run_command` tool
 - [ ] working chat with anthropic models
 - [ ] support for git tool usage
 - [ ] automatic git commit for every change

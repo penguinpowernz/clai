@@ -7,11 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
-	"github.com/penguinpowernz/aichat/config"
-	"github.com/penguinpowernz/aichat/internal/tools"
+	"github.com/penguinpowernz/clai/config"
+	"github.com/penguinpowernz/clai/internal/tools"
 )
 
 type OpenAIClient struct {
@@ -49,13 +50,15 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 		Temperature: c.config.Temperature,
 		Stream:      false,
 		Tools:       c.tools,
-		ToolChoice:  "auto",
 	}
 
 	respBody, err := c.makeRequest(ctx, reqBody)
 	if err != nil {
 		return nil, err
 	}
+
+	data, _ := json.MarshalIndent(respBody, "", "  ")
+	log.Println(string(data))
 
 	return &Response{
 		Content:      respBody.Choices[0].Message.Content,
@@ -68,7 +71,7 @@ func (c *OpenAIClient) SetTools(tools []tools.Tool) {
 	c.tools = tools
 }
 
-func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<-chan string, error) {
+func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<-chan MessageChunk, error) {
 	// Prepend system prompt if it exists
 	allMessages := c.prepareMessages(messages)
 
@@ -79,7 +82,6 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 		Temperature: c.config.Temperature,
 		Stream:      true,
 		Tools:       c.tools,
-		ToolChoice:  "auto",
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -87,6 +89,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	log.Println("sending request: ", string(jsonData))
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -108,7 +111,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	streamChan := make(chan string, 10)
+	streamChan := make(chan MessageChunk, 10)
 
 	go func() {
 		defer close(streamChan)
@@ -130,6 +133,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 			if len(line) == 0 {
 				continue
 			}
+			log.Println("line:", string(line))
 
 			// SSE format: "data: {...}"
 			if !bytes.HasPrefix(line, []byte("data: ")) {
@@ -145,15 +149,27 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 
 			var chunk openAIStreamChunk
 			if err := json.Unmarshal(data, &chunk); err != nil {
+				log.Printf("Failed to parse chunk: %v\n", err)
 				if c.config.Verbose {
 					fmt.Printf("Failed to parse chunk: %v\n", err)
 				}
 				continue
 			}
 
+			if len(chunk.Choices) > 0 && len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+				log.Printf("processing tool calls %+v", chunk.Choices[0].Delta.ToolCalls)
+				for _, call := range chunk.Choices[0].Delta.ToolCalls {
+					select {
+					case streamChan <- MessageChunk{ToolCall: c.parseToolCall(call)}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				select {
-				case streamChan <- chunk.Choices[0].Delta.Content:
+				case streamChan <- MessageChunk{Content: chunk.Choices[0].Delta.Content}:
 				case <-ctx.Done():
 					return
 				}
@@ -162,6 +178,17 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 	}()
 
 	return streamChan, nil
+}
+
+func (c *OpenAIClient) parseToolCall(call openAIToolCall) *ToolCall {
+	tc := &ToolCall{
+		ID:   call.ID,
+		Name: call.Function.Name,
+	}
+	log.Printf("ARGS %s", string(call.Function.Arguments))
+	err := json.Unmarshal([]byte(call.Function.Arguments), &tc.Args)
+	log.Printf("ARGS2 %s %+v", err, tc.Args)
+	return tc
 }
 
 func (c *OpenAIClient) GetModelInfo() ModelInfo {
@@ -287,6 +314,15 @@ type openAIStreamChoice struct {
 }
 
 type openAIStreamDelta struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
+	Role      string           `json:"role,omitempty"`
+	Content   string           `json:"content,omitempty"`
+	ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
+}
+
+type openAIToolCall struct {
+	ID       string `json:"id"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }

@@ -60,7 +60,7 @@ func (c *AnthropicClient) SendMessage(ctx context.Context, messages []Message) (
 	}, nil
 }
 
-func (c *AnthropicClient) StreamMessage(ctx context.Context, messages []Message) (<-chan string, error) {
+func (c *AnthropicClient) StreamMessage(ctx context.Context, messages []Message) (<-chan MessageChunk, error) {
 	reqBody := anthropicRequest{
 		Model:     c.model,
 		Messages:  convertToAnthropicMessages(messages),
@@ -94,7 +94,7 @@ func (c *AnthropicClient) StreamMessage(ctx context.Context, messages []Message)
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
-	streamChan := make(chan string, 10)
+	streamChan := make(chan MessageChunk, 10)
 
 	go func() {
 		defer close(streamChan)
@@ -115,7 +115,7 @@ func (c *AnthropicClient) StreamMessage(ctx context.Context, messages []Message)
 
 			if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
 				select {
-				case streamChan <- event.Delta.Text:
+				case streamChan <- MessageChunk{Content: event.Delta.Text}:
 				case <-ctx.Done():
 					return
 				}

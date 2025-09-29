@@ -3,16 +3,17 @@ package ai
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/penguinpowernz/clai/internal/tools"
 )
 
 // Message represents a single message in the conversation
 type Message struct {
-	Role      string   `json:"role"`                  // "user", "assistant", or "system"
-	Content   string   `json:"content"`               // The message content
-	ToolUseID string   `json:"tool_use_id,omitempty"` // For tool result messages
-	ToolUse   *ToolUse `json:"tool_use,omitempty"`    // When assistant uses a tool
+	Role       string   `json:"role"`                   // "user", "assistant", or "system"
+	Content    string   `json:"content"`                // The message content
+	ToolCallID string   `json:"tool_call_id,omitempty"` // For tool result messages
+	ToolCall   *ToolUse `json:"tool_call,omitempty"`    // When assistant uses a tool
 }
 
 // ToolUse represents a tool invocation by the AI
@@ -36,7 +37,7 @@ type AIProvider interface {
 	SendMessage(ctx context.Context, messages []Message) (*Response, error)
 
 	// StreamMessage sends a message and streams the response
-	StreamMessage(ctx context.Context, messages []Message) (<-chan string, error)
+	StreamMessage(ctx context.Context, messages []Message) (<-chan MessageChunk, error)
 
 	// GetModelInfo returns information about the current model
 	GetModelInfo() ModelInfo
@@ -51,4 +52,27 @@ type ModelInfo struct {
 	Provider          string
 	MaxTokens         int
 	SupportsStreaming bool
+}
+
+type MessageChunk struct {
+	Content  string
+	ToolCall *ToolCall
+}
+
+func (m MessageChunk) String() string {
+	if m.IsToolCall() {
+		return fmt.Sprintf("The AI wishes to call the tool: %s with args: %+v", m.ToolCall.Name, m.ToolCall.Args)
+	}
+
+	return m.Content
+}
+
+func (m MessageChunk) IsToolCall() bool {
+	return m.ToolCall != nil
+}
+
+type ToolCall struct {
+	ID   string
+	Name string
+	Args map[string]interface{}
 }
