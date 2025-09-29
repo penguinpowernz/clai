@@ -3,7 +3,9 @@
 A **work-in-progress**chat CLI written in golang that can talk to Ollama (and others).
 
 **WARNING: AI SLOP** much of this code was written by Claude Sonnet.  The current status is that it is working
-with self hosted Ollama models.
+with self hosted Ollama models.  It is quite simple for now, and things are subject to change.
+
+<img width="862" height="259" alt="image" src="https://github.com/user-attachments/assets/bc5d3972-c985-46d4-8fff-eb8e9af64873" />
 
 # Usage
 
