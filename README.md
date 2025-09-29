@@ -18,7 +18,7 @@ go run ./cmd/clai
 - [x] scrollable history
 - [x] specify system prompt in the config file
 - [x] specify settings including model and URL in config file
-- [x] send prompts to ollama
+- [x] working chat with ollama models
 - [ ] add `read_file` and `write_file` tools
 - [ ] add `search_file` and `list_files` tools
 - [ ] send files in prompt when `@filename` is in the prompt
@@ -27,4 +27,4 @@ go run ./cmd/clai
 - [ ] add `/clear` command to reset the prompt
 - [ ] add `/quit` command to exit
 - [ ] save chat history to file
-- [ ] test anthropic capability
+- [ ] working chat with anthropic models
