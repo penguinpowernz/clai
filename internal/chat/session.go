@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -14,23 +15,39 @@ import (
 	"github.com/penguinpowernz/aichat/config"
 	"github.com/penguinpowernz/aichat/internal/ai"
 	"github.com/penguinpowernz/aichat/internal/files"
+	"github.com/penguinpowernz/aichat/internal/tools"
 )
 
 // Session manages the conversation state
 type Session struct {
-	config   *config.Config
-	client   ai.AIProvider
-	messages []ai.Message
-	files    *files.Context
+	config     *config.Config
+	client     ai.AIProvider
+	messages   []ai.Message
+	files      *files.Context
+	workingDir string
+	tools      []tools.Tool
 }
 
 func NewSession(cfg *config.Config, client ai.AIProvider) *Session {
+	wd, _ := os.Getwd()
+
 	return &Session{
-		config:   cfg,
-		client:   client,
-		messages: make([]ai.Message, 0),
-		files:    files.NewContext(cfg),
+		config:     cfg,
+		client:     client,
+		messages:   make([]ai.Message, 0),
+		files:      files.NewContext(cfg),
+		workingDir: wd,
+		tools:      tools.GetAvailableTools(),
 	}
+}
+
+// ProcessToolUses handles tool calls from the AI
+func (s *Session) ProcessToolUses(toolUses []tools.ToolUse) []tools.ToolResult {
+	results := make([]tools.ToolResult, len(toolUses))
+	for i, toolUse := range toolUses {
+		results[i] = tools.ExecuteTool(s.config, toolUse, s.workingDir)
+	}
+	return results
 }
 
 // InteractiveMode starts the bubbletea REPL

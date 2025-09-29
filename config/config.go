@@ -15,6 +15,9 @@ type Config struct {
 	APIKey   string `mapstructure:"api_key"`
 	BaseURL  string `mapstructure:"base_url"` // Custom API endpoint (for ollama, local models, etc.)
 
+	// Prompt settings
+	SystemPrompt string `mapstructure:"system_prompt"` // Custom system prompt
+
 	// Behavior settings
 	AutoApply    bool    `mapstructure:"auto_apply"`    // Auto-apply code changes
 	AutoCommit   bool    `mapstructure:"auto_commit"`   // Auto-commit changes
@@ -41,9 +44,6 @@ type Config struct {
 	SessionDir     string `mapstructure:"session_dir"`      // Where to store sessions
 	SaveHistory    bool   `mapstructure:"save_history"`     // Save conversation history
 	MaxHistorySize int    `mapstructure:"max_history_size"` // Max messages to keep
-
-	// Prompt settings
-	SystemPrompt string `mapstructure:"system_prompt"` // System prompt
 }
 
 // Load loads the configuration from file and environment
@@ -54,6 +54,7 @@ func Load() (*Config, error) {
 		Model:        "claude-sonnet-4-20250514",
 		APIKey:       "",
 		BaseURL:      "", // Will be set based on provider if empty
+		SystemPrompt: getDefaultSystemPrompt(),
 		AutoApply:    false,
 		AutoCommit:   false,
 		Stream:       true,
@@ -79,7 +80,6 @@ func Load() (*Config, error) {
 		SessionDir:     ".aichat",
 		SaveHistory:    true,
 		MaxHistorySize: 100,
-		SystemPrompt:   "",
 	}
 
 	// Unmarshal viper config into struct
@@ -150,16 +150,13 @@ func Initialize() error {
 
 	configPath := home + "/.aichat.yaml"
 
-	// Check if config already exi
-	// SystemPrompt:   "",sts
+	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("config file already exists at %s", configPath)
 	}
 
 	// Create default config
 	defaultConfig := `# AI Code Assistant Configuration
-
-system_prompt: You are a helpful assistant.
 
 # AI Provider (anthropic, openai, ollama, or custom)
 provider: anthropic
@@ -173,6 +170,11 @@ model: claude-sonnet-4-20250514
 # API Key (or use environment variable)
 # Not required for Ollama or local models
 # api_key: your-api-key-here
+
+# System Prompt (optional - uses default if not set)
+# Customize the AI's behavior and personality
+# system_prompt: |
+#   You are an expert coding assistant...
 
 # Behavior
 auto_apply: false      # Automatically apply code changes
@@ -207,8 +209,7 @@ max_file_size: 1048576 # Max file size in bytes (1MB)
 # Session
 session_dir: .aichat   # Where to store session data
 save_history: true     # Save conversation history
-max_history_size: 10
-SystemPrompt:   "",0  # Max messages to keep in history
+max_history_size: 100  # Max messages to keep in history
 `
 
 	if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {
@@ -274,4 +275,25 @@ func getDefaultBaseURL(provider string) string {
 	default:
 		return ""
 	}
+}
+
+// getDefaultSystemPrompt returns the default system prompt
+func getDefaultSystemPrompt() string {
+	return `You are an expert coding assistant helping developers write, debug, and improve code.
+
+Key responsibilities:
+- Write clean, efficient, and well-documented code
+- Explain technical concepts clearly
+- Suggest best practices and design patterns
+- Debug issues and propose fixes
+- Refactor code for better maintainability
+- Answer questions about programming concepts
+
+When modifying code:
+- Preserve existing code style and conventions
+- Add comments for complex logic
+- Consider edge cases and error handling
+- Write code that is production-ready
+
+Always be concise but thorough in your explanations.`
 }

@@ -1,19 +1,33 @@
 // internal/ai/types.go
 package ai
 
-import "context"
+import (
+	"context"
+
+	"github.com/penguinpowernz/aichat/internal/tools"
+)
 
 // Message represents a single message in the conversation
 type Message struct {
-	Role    string `json:"role"`    // "user", "assistant", or "system"
-	Content string `json:"content"` // The message content
+	Role      string   `json:"role"`                  // "user", "assistant", or "system"
+	Content   string   `json:"content"`               // The message content
+	ToolUseID string   `json:"tool_use_id,omitempty"` // For tool result messages
+	ToolUse   *ToolUse `json:"tool_use,omitempty"`    // When assistant uses a tool
+}
+
+// ToolUse represents a tool invocation by the AI
+type ToolUse struct {
+	ID    string      `json:"id"`
+	Name  string      `json:"name"`
+	Input interface{} `json:"input"`
 }
 
 // Response represents an AI response
 type Response struct {
 	Content      string
 	TokensUsed   int
-	FinishReason string // "stop", "length", "content_filter", etc.
+	FinishReason string    // "stop", "length", "content_filter", "tool_use", etc.
+	ToolUses     []ToolUse // Tools the AI wants to use
 }
 
 // AIProvider is the interface that all AI clients must implement
@@ -26,6 +40,9 @@ type AIProvider interface {
 
 	// GetModelInfo returns information about the current model
 	GetModelInfo() ModelInfo
+
+	// SetTools sets the tools available to the AI
+	SetTools(tools []tools.Tool)
 }
 
 // ModelInfo contains metadata about the AI model

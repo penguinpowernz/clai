@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/aichat/internal/tools"
 )
 
 type OpenAIClient struct {
@@ -19,6 +20,7 @@ type OpenAIClient struct {
 	baseURL    string
 	apiKey     string
 	model      string
+	tools      []tools.Tool
 }
 
 func NewOpenAIClient(cfg *config.Config) (*OpenAIClient, error) {
@@ -46,6 +48,8 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      false,
+		Tools:       c.tools,
+		ToolChoice:  "auto",
 	}
 
 	respBody, err := c.makeRequest(ctx, reqBody)
@@ -60,6 +64,10 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 	}, nil
 }
 
+func (c *OpenAIClient) SetTools(tools []tools.Tool) {
+	c.tools = tools
+}
+
 func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<-chan string, error) {
 	// Prepend system prompt if it exists
 	allMessages := c.prepareMessages(messages)
@@ -70,6 +78,8 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      true,
+		Tools:       c.tools,
+		ToolChoice:  "auto",
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -232,6 +242,8 @@ type openAIRequest struct {
 	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Temperature float64         `json:"temperature,omitempty"`
 	Stream      bool            `json:"stream"`
+	Tools       []tools.Tool    `json:"tools,omitempty"`
+	ToolChoice  string          `json:"tool_choice,omitempty"`
 }
 
 type openAIMessage struct {

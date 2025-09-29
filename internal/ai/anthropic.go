@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/aichat/internal/tools"
 )
 
 type AnthropicClient struct {
@@ -17,6 +18,7 @@ type AnthropicClient struct {
 	baseURL    string
 	apiKey     string
 	model      string
+	tools      []tools.Tool
 }
 
 func NewAnthropicClient(cfg *config.Config) (*AnthropicClient, error) {
@@ -31,6 +33,10 @@ func NewAnthropicClient(cfg *config.Config) (*AnthropicClient, error) {
 		apiKey:     cfg.APIKey,
 		model:      cfg.Model,
 	}, nil
+}
+
+func (c *AnthropicClient) SetTools(tools []tools.Tool) {
+	c.tools = tools
 }
 
 func (c *AnthropicClient) SendMessage(ctx context.Context, messages []Message) (*Response, error) {
