@@ -86,6 +86,7 @@ type chatModel struct {
 	width         int
 	height        int
 	currentStream strings.Builder
+	streamChan    <-chan string // Keep reference to the stream channel
 }
 
 type chatMessage struct {
@@ -95,7 +96,7 @@ type chatMessage struct {
 
 // Messages for bubbletea updates
 type streamChunkMsg string
-type streamDoneMsg struct{ content string }
+type streamDoneMsg struct{} // Remove content field
 type streamErrMsg struct{ err error }
 
 func newChatModel(session *Session, ctx context.Context) chatModel {
@@ -190,7 +191,7 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return m, tea.Batch(
 				m.spinner.Tick,
-				m.streamResponse(),
+				m.startStreaming(), // Start streaming - creates the channel
 			)
 
 		case tea.KeyCtrlL:
@@ -199,6 +200,22 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.session.messages = make([]ai.Message, 0)
 			m.viewport.SetContent(welcomeMessage())
 		}
+
+	case streamStartMsg:
+		// Store the stream channel and process first chunk
+		m.streamChan = msg.stream
+		m.currentStream.WriteString(msg.firstChunk)
+
+		m.messages = append(m.messages, chatMessage{
+			role:    "assistant-streaming",
+			content: m.currentStream.String(),
+		})
+
+		m.viewport.SetContent(m.renderMessages())
+		m.viewport.GotoBottom()
+
+		// Start reading next chunks
+		return m, m.readNextChunk()
 
 	case streamChunkMsg:
 		// Append chunk to current stream
@@ -217,8 +234,8 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.SetContent(m.renderMessages())
 		m.viewport.GotoBottom()
 
-		// Continue reading stream
-		return m, m.streamResponse()
+		// Continue reading from the SAME stream
+		return m, m.readNextChunk()
 
 	case streamDoneMsg:
 		// Finalize the assistant message
@@ -228,10 +245,12 @@ func (m chatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.session.messages = append(m.session.messages, ai.Message{
 			Role:    "assistant",
-			Content: msg.content,
+			Content: m.currentStream.String(), // Use m.currentStream instead of msg.content
 		})
 
 		m.waiting = false
+		m.currentStream.Reset() // Reset for next message
+		m.streamChan = nil      // Clear the channel reference
 		m.viewport.SetContent(m.renderMessages())
 		m.viewport.GotoBottom()
 
@@ -267,20 +286,43 @@ func (m chatModel) View() string {
 	)
 }
 
-// streamResponse streams the AI response
-func (m chatModel) streamResponse() tea.Cmd {
+// startStreaming initiates a new stream
+func (m chatModel) startStreaming() tea.Cmd {
 	return func() tea.Msg {
 		stream, err := m.session.client.StreamMessage(m.ctx, m.session.messages)
 		if err != nil {
 			return streamErrMsg{err: err}
 		}
 
+		// Store the stream channel in the model
+		// This happens in a goroutine, but we'll handle it via messages
+
 		// Read first chunk
 		chunk, ok := <-stream
 		if !ok {
-			return streamDoneMsg{content: m.currentStream.String()}
+			return streamDoneMsg{} // Stream ended immediately
 		}
 
+		// We need to pass the stream to subsequent reads
+		// Store it via a message that includes the channel
+		return streamStartMsg{stream: stream, firstChunk: string(chunk)}
+	}
+}
+
+// streamStartMsg carries the stream channel and first chunk
+type streamStartMsg struct {
+	stream     <-chan string
+	firstChunk string
+}
+
+// readNextChunk reads the next chunk from the stored stream
+func (m chatModel) readNextChunk() tea.Cmd {
+	stream := m.streamChan // Capture the stream
+	return func() tea.Msg {
+		chunk, ok := <-stream
+		if !ok {
+			return streamDoneMsg{} // Stream ended
+		}
 		return streamChunkMsg(chunk)
 	}
 }

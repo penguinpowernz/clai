@@ -37,9 +37,12 @@ func NewOpenAIClient(cfg *config.Config) (*OpenAIClient, error) {
 }
 
 func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Response, error) {
+	// Prepend system prompt if it exists
+	allMessages := c.prepareMessages(messages)
+
 	reqBody := openAIRequest{
 		Model:       c.model,
-		Messages:    convertToOpenAIMessages(messages),
+		Messages:    allMessages,
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      false,
@@ -58,9 +61,12 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 }
 
 func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<-chan string, error) {
+	// Prepend system prompt if it exists
+	allMessages := c.prepareMessages(messages)
+
 	reqBody := openAIRequest{
 		Model:       c.model,
-		Messages:    convertToOpenAIMessages(messages),
+		Messages:    allMessages,
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      true,
@@ -201,6 +207,22 @@ func convertToOpenAIMessages(messages []Message) []openAIMessage {
 		}
 	}
 	return result
+}
+
+// prepareMessages prepends system prompt if it exists
+func (c *OpenAIClient) prepareMessages(messages []Message) []openAIMessage {
+	var allMessages []Message
+
+	// Add system prompt if it exists
+	if c.config.SystemPrompt != "" {
+		allMessages = append(allMessages, Message{
+			Role:    "system",
+			Content: c.config.SystemPrompt,
+		})
+	}
+
+	allMessages = append(allMessages, messages...)
+	return convertToOpenAIMessages(allMessages)
 }
 
 // OpenAI API types

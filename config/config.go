@@ -41,6 +41,9 @@ type Config struct {
 	SessionDir     string `mapstructure:"session_dir"`      // Where to store sessions
 	SaveHistory    bool   `mapstructure:"save_history"`     // Save conversation history
 	MaxHistorySize int    `mapstructure:"max_history_size"` // Max messages to keep
+
+	// Prompt settings
+	SystemPrompt string `mapstructure:"system_prompt"` // System prompt
 }
 
 // Load loads the configuration from file and environment
@@ -76,6 +79,7 @@ func Load() (*Config, error) {
 		SessionDir:     ".aichat",
 		SaveHistory:    true,
 		MaxHistorySize: 100,
+		SystemPrompt:   "",
 	}
 
 	// Unmarshal viper config into struct
@@ -146,13 +150,16 @@ func Initialize() error {
 
 	configPath := home + "/.aichat.yaml"
 
-	// Check if config already exists
+	// Check if config already exi
+	// SystemPrompt:   "",sts
 	if _, err := os.Stat(configPath); err == nil {
 		return fmt.Errorf("config file already exists at %s", configPath)
 	}
 
 	// Create default config
 	defaultConfig := `# AI Code Assistant Configuration
+
+system_prompt: You are a helpful assistant.
 
 # AI Provider (anthropic, openai, ollama, or custom)
 provider: anthropic
@@ -200,7 +207,8 @@ max_file_size: 1048576 # Max file size in bytes (1MB)
 # Session
 session_dir: .aichat   # Where to store session data
 save_history: true     # Save conversation history
-max_history_size: 100  # Max messages to keep in history
+max_history_size: 10
+SystemPrompt:   "",0  # Max messages to keep in history
 `
 
 	if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {

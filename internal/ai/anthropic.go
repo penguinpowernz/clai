@@ -39,6 +39,7 @@ func (c *AnthropicClient) SendMessage(ctx context.Context, messages []Message) (
 		Messages:  convertToAnthropicMessages(messages),
 		MaxTokens: c.config.MaxTokens,
 		Stream:    false,
+		System:    c.config.SystemPrompt, // Add system prompt
 	}
 
 	respBody, err := c.makeRequest(ctx, reqBody)
@@ -59,6 +60,7 @@ func (c *AnthropicClient) StreamMessage(ctx context.Context, messages []Message)
 		Messages:  convertToAnthropicMessages(messages),
 		MaxTokens: c.config.MaxTokens,
 		Stream:    true,
+		System:    c.config.SystemPrompt, // Add system prompt
 	}
 
 	jsonData, err := json.Marshal(reqBody)
@@ -186,6 +188,7 @@ type anthropicRequest struct {
 	Messages  []anthropicMessage `json:"messages"`
 	MaxTokens int                `json:"max_tokens"`
 	Stream    bool               `json:"stream"`
+	System    string             `json:"system,omitempty"` // System prompt
 }
 
 type anthropicMessage struct {
