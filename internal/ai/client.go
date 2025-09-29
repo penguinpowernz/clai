@@ -3,7 +3,7 @@ package ai
 import (
 	"fmt"
 
-	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/clai/config"
 )
 
 // NewClient creates a new AI client based on the provider configuration

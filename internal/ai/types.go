@@ -4,7 +4,7 @@ package ai
 import (
 	"context"
 
-	"github.com/penguinpowernz/aichat/internal/tools"
+	"github.com/penguinpowernz/clai/internal/tools"
 )
 
 // Message represents a single message in the conversation

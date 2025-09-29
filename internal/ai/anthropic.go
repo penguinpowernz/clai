@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/penguinpowernz/aichat/config"
-	"github.com/penguinpowernz/aichat/internal/tools"
+	"github.com/penguinpowernz/clai/config"
+	"github.com/penguinpowernz/clai/internal/tools"
 )
 
 type AnthropicClient struct {

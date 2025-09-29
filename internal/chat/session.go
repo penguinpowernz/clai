@@ -12,10 +12,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/penguinpowernz/aichat/config"
-	"github.com/penguinpowernz/aichat/internal/ai"
-	"github.com/penguinpowernz/aichat/internal/files"
-	"github.com/penguinpowernz/aichat/internal/tools"
+	"github.com/penguinpowernz/clai/config"
+	"github.com/penguinpowernz/clai/internal/ai"
+	"github.com/penguinpowernz/clai/internal/files"
+	"github.com/penguinpowernz/clai/internal/tools"
 )
 
 // Session manages the conversation state

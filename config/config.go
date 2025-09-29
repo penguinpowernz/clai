@@ -77,7 +77,7 @@ func Load() (*Config, error) {
 		},
 		IncludeHidden:  false,
 		MaxFileSize:    1024 * 1024, // 1MB
-		SessionDir:     ".aichat",
+		SessionDir:     ".clai",
 		SaveHistory:    true,
 		MaxHistorySize: 100,
 	}
@@ -148,7 +148,7 @@ func Initialize() error {
 		return err
 	}
 
-	configPath := home + "/.aichat.yaml"
+	configPath := home + "/.clai.yaml"
 
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
@@ -207,7 +207,7 @@ include_hidden: false  # Include hidden files
 max_file_size: 1048576 # Max file size in bytes (1MB)
 
 # Session
-session_dir: .aichat   # Where to store session data
+session_dir: .clai   # Where to store session data
 save_history: true     # Save conversation history
 max_history_size: 100  # Max messages to keep in history
 `

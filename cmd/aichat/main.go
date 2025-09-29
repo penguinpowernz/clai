@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/penguinpowernz/aichat/config"
-	"github.com/penguinpowernz/aichat/internal/ai"
-	"github.com/penguinpowernz/aichat/internal/chat"
+	"github.com/penguinpowernz/clai/config"
+	"github.com/penguinpowernz/clai/internal/ai"
+	"github.com/penguinpowernz/clai/internal/chat"
 )
 
 var (
@@ -47,7 +47,7 @@ func run() error {
 
 func newRootCommand(ctx context.Context) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "aichat [message]",
+		Use:   "clai [message]",
 		Short: "AI-powered coding assistant",
 		Long: `A CLI tool for AI-assisted coding using Claude or other LLMs.
 Helps you write, refactor, and debug code through conversational AI.
@@ -91,7 +91,7 @@ Run without arguments to enter interactive mode, or provide a message to send im
 	}
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.aichat.yml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.clai.yml)")
 	rootCmd.PersistentFlags().String("model", "", "AI model to use (e.g., claude-sonnet-4-20250514)")
 	rootCmd.PersistentFlags().String("provider", "", "AI provider (anthropic, openai)")
 	rootCmd.PersistentFlags().Bool("verbose", false, "verbose output")
@@ -125,17 +125,17 @@ func initConfig() error {
 		// Search for config in home directory
 		viper.AddConfigPath(home)
 		viper.SetConfigType("yaml")
-		viper.SetConfigName(".aichat")
+		viper.SetConfigName(".clai")
 
 		// Also check XDG config directory
 		configDir, err := os.UserConfigDir()
 		if err == nil {
-			viper.AddConfigPath(configDir + "/aichat")
+			viper.AddConfigPath(configDir + "/clai")
 		}
 	}
 
 	// Read environment variables
-	viper.SetEnvPrefix("AICHAT")
+	viper.SetEnvPrefix("CLAI")
 	viper.AutomaticEnv()
 
 	// Read config file (ignore not found errors)

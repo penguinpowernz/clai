@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/clai/config"
 )
 
 // Tool represents a function the AI can call

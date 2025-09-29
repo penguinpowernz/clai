@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/penguinpowernz/aichat/config"
+	"github.com/penguinpowernz/clai/config"
 )
 
 // Context manages file context for AI requests

@@ -1,4 +1,4 @@
-module github.com/penguinpowernz/aichat
+module github.com/penguinpowernz/clai
 
 go 1.24.3
 
