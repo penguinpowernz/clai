@@ -79,7 +79,9 @@ In order of priority.
 - [x] specify system prompt in the config file
 - [x] specify settings including model and URL in config file
 - [x] working chat with ollama models
+- [x] add reasoning output
 - [ ] get errors and system messages showing in the UI
+- [ ] turn thinking output on and off with `/thinking` and config item
 - [ ] send files in prompt when `@filename` is in the prompt
 - [ ] add `search_file` and `list_files` tools
 - [ ] ask for permission for the AI to use tools
