@@ -3,6 +3,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/penguinpowernz/clai/internal/tools"
@@ -31,8 +32,8 @@ type Response struct {
 	ToolUses     []ToolUse // Tools the AI wants to use
 }
 
-// AIProvider is the interface that all AI clients must implement
-type AIProvider interface {
+// Provider is the interface that all AI clients must implement
+type Provider interface {
 	// SendMessage sends a message and waits for complete response
 	SendMessage(ctx context.Context, messages []Message) (*Response, error)
 
@@ -66,7 +67,7 @@ func (m MessageChunk) Type() string {
 
 func (m MessageChunk) String() string {
 	if m.IsToolCall() {
-		return fmt.Sprintf("The AI wishes to call the tool: %s with args: %+v", m.ToolCall.Name, m.ToolCall.Args)
+		return fmt.Sprintf("The AI wishes to call the tool: %s with args: %+v", m.ToolCall.Name)
 	}
 
 	return m.Content
@@ -77,9 +78,9 @@ func (m MessageChunk) IsToolCall() bool {
 }
 
 type ToolCall struct {
-	ID   string
-	Name string
-	Args map[string]interface{}
+	ID    string
+	Name  string
+	Input json.RawMessage
 }
 
 const (

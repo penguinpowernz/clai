@@ -194,8 +194,8 @@ func (c *OpenAIClient) parseToolCall(call openAIToolCall) *ToolCall {
 		Name: call.Function.Name,
 	}
 	log.Printf("ARGS %s", string(call.Function.Arguments))
-	err := json.Unmarshal([]byte(call.Function.Arguments), &tc.Args)
-	log.Printf("ARGS2 %s %+v", err, tc.Args)
+	err := json.Unmarshal([]byte(call.Function.Arguments), &tc.Input)
+	log.Printf("ARGS2 %s %+v", err, tc.Input)
 	return tc
 }
 

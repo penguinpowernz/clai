@@ -54,6 +54,20 @@ type ToolResult struct {
 // GetAvailableTools returns all tools the AI can use
 func GetAvailableTools() []Tool {
 	return []Tool{
+		// {
+		// 	Type: "function",
+		// 	Function: &FunctionSchema{
+		// 		Name: "grep",
+		//    Description: "Find content inside of a file or files",
+		// 	},
+		// },
+		// {
+		// 	Type: "function",
+		// 	Function: &FunctionSchema{
+		// 		Name: "find_files",
+		//		Description: "Find files by name or glob pattern",
+		// 	},
+		// },
 		{
 			Type: "function",
 			Function: &FunctionSchema{
@@ -161,13 +175,13 @@ func GetAvailableTools() []Tool {
 type toolExecutor func(cfg config.Config, toolUse json.RawMessage, workingDir string) (string, error)
 
 // ExecuteTool executes a tool and returns the result
-func ExecuteTool(cfg *config.Config, toolUse ToolUse, workingDir string) ToolResult {
+func ExecuteTool(cfg *config.Config, toolCall ToolUse, workingDir string) ToolResult {
 	result := ToolResult{
-		ToolUseID: toolUse.ID,
+		ToolUseID: toolCall.ID,
 	}
 
 	var tool toolExecutor
-	switch toolUse.Name {
+	switch toolCall.Name {
 	case "list_files":
 		tool = listFiles
 	case "read_file":
@@ -179,18 +193,18 @@ func ExecuteTool(cfg *config.Config, toolUse ToolUse, workingDir string) ToolRes
 	case "search_files":
 		tool = searchFiles
 	default:
-		result.Content = fmt.Sprintf("Unknown tool: %s", toolUse.Name)
+		result.Content = fmt.Sprintf("Unknown tool: %s", toolCall.Name)
 		result.IsError = true
 		return result
 	}
 
 	if tool == nil {
-		result.Content = fmt.Sprintf("Unknown tool: %s", toolUse.Name)
+		result.Content = fmt.Sprintf("Unknown tool: %s", toolCall.Name)
 		result.IsError = true
 		return result
 	}
 
-	content, err := tool(*cfg, toolUse.Input, workingDir)
+	content, err := tool(*cfg, toolCall.Input, workingDir)
 	if err != nil {
 		result.Content = fmt.Sprintf("Error: %v", err)
 		result.IsError = true
