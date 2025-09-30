@@ -66,9 +66,13 @@ save_history: true     # Save conversation history
 max_history_size: 100  # Max messages to keep in history
 ```
 
+To run it:
+
 ```bash
 go run ./cmd/clai
 ```
+
+Send a prompt using CTRL+D, quit with CTRL+C or ESC...
 
 ## TODO
 
