@@ -15,6 +15,7 @@ import (
 )
 
 type EventStreamStarted string
+type EventStreamThink string
 type EventStreamEnded string
 type EventStreamChunk string
 type EventToolCall ai.ToolCall
@@ -34,6 +35,7 @@ type ChatModel struct {
 	spinner       spinner.Model
 	messages      []chatMessage
 	waiting       bool
+	thinking      bool
 	err           error
 	width         int
 	height        int
@@ -112,24 +114,45 @@ func (m *ChatModel) OnToolCallReceived(toolCall *ai.ToolCall) {
 	m.viewport.GotoBottom()
 }
 
-func (m *ChatModel) onStreamStarted(firstChunk string) {
+func (m *ChatModel) onStreamStarted() {
+	log.Println("STREAM STARTED")
 	m.waiting = true
 	m.currentStream.Reset()
-	m.currentStream.WriteString(firstChunk)
 
-	// Add a streaming assistant message
+	m.thinking = true
 	m.messages = append(m.messages, chatMessage{
-		role:    "assistant-streaming",
+		role:    "thinking",
 		content: m.currentStream.String(),
 	})
 
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
-	log.Println("STREAM STARTED")
+}
+
+func (m *ChatModel) onStreamThink(chunk string) {
+	m.currentStream.WriteString(chunk)
+
+	// Update the last streaming message
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].role == "thinking" {
+		m.messages[len(m.messages)-1].content = m.currentStream.String()
+	}
+
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
 }
 
 func (m *ChatModel) onStreamChunk(chunk string) {
+	if m.thinking {
+		m.currentStream.Reset()
+		// Add a streaming assistant message
+		m.messages = append(m.messages, chatMessage{
+			role:    "assistant-streaming",
+			content: "",
+		})
+		m.thinking = false
+	}
+
 	m.currentStream.WriteString(chunk)
 
 	// Update the last streaming message
@@ -256,8 +279,12 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.onStreamEnded(string(msg))
 		return m, listen(m)
 
+	case EventStreamThink:
+		m.onStreamThink(string(msg))
+		return m, listen(m)
+
 	case EventStreamStarted:
-		m.onStreamStarted(string(msg))
+		m.onStreamStarted()
 		return m, listen(m)
 
 	}
@@ -311,8 +338,12 @@ func (m ChatModel) renderMessages() string {
 			b.WriteString(systemStyle.Render("System: "))
 			b.WriteString(msg.content)
 			b.WriteString("\n\n")
+		case "thinking":
+			b.WriteString(thinkingStyle.Render(msg.content))
+			b.WriteString("\n\n")
 		}
 	}
+
 	return b.String()
 }
 
@@ -346,6 +377,9 @@ var (
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("240"))
+
+	thinkingStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("243"))
 
 	errorStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).

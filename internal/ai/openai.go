@@ -174,6 +174,14 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 					return
 				}
 			}
+
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Reasoning != "" {
+				select {
+				case streamChan <- MessageChunk{typ: ChunkThink, Content: chunk.Choices[0].Delta.Reasoning}:
+				case <-ctx.Done():
+					return
+				}
+			}
 		}
 	}()
 
@@ -316,6 +324,7 @@ type openAIStreamChoice struct {
 type openAIStreamDelta struct {
 	Role      string           `json:"role,omitempty"`
 	Content   string           `json:"content,omitempty"`
+	Reasoning string           `json:"reasoning,omitempty"`
 	ToolCalls []openAIToolCall `json:"tool_calls,omitempty"`
 }
 

@@ -152,7 +152,10 @@ func (s *Session) StartStream(ctx context.Context, message string) (string, erro
 			response.WriteString(chunk.String())
 
 		case ai.ChunkThink:
-			// we don't show these yet
+			// log.Println("THINK:", chunk.String())
+			s.events <- ui.EventStreamThink(chunk.String())
+		default:
+			log.Println("Unknown chunk type:", chunk.Type())
 		}
 	}
 
