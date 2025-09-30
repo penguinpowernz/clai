@@ -55,8 +55,13 @@ type ModelInfo struct {
 }
 
 type MessageChunk struct {
+	typ      string
 	Content  string
 	ToolCall *ToolCall
+}
+
+func (m MessageChunk) Type() string {
+	return m.typ
 }
 
 func (m MessageChunk) String() string {
@@ -76,3 +81,9 @@ type ToolCall struct {
 	Name string
 	Args map[string]interface{}
 }
+
+const (
+	ChunkMessage  = "message"
+	ChunkToolCall = "tool_call"
+	ChunkThink    = "think"
+)

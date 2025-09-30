@@ -160,7 +160,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 				log.Printf("processing tool calls %+v", chunk.Choices[0].Delta.ToolCalls)
 				for _, call := range chunk.Choices[0].Delta.ToolCalls {
 					select {
-					case streamChan <- MessageChunk{ToolCall: c.parseToolCall(call)}:
+					case streamChan <- MessageChunk{typ: ChunkToolCall, ToolCall: c.parseToolCall(call)}:
 					case <-ctx.Done():
 						return
 					}
@@ -169,7 +169,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				select {
-				case streamChan <- MessageChunk{Content: chunk.Choices[0].Delta.Content}:
+				case streamChan <- MessageChunk{typ: ChunkMessage, Content: chunk.Choices[0].Delta.Content}:
 				case <-ctx.Done():
 					return
 				}

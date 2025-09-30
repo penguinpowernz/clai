@@ -8,12 +8,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
 	"github.com/penguinpowernz/clai/internal/chat"
+	"github.com/penguinpowernz/clai/internal/ui"
 )
 
 var (
@@ -75,25 +77,19 @@ Run without arguments to enter interactive mode, or provide a message to send im
 				return fmt.Errorf("failed to create AI client: %w", err)
 			}
 
+			cm := ui.NewChatModel(ctx)
 			session := chat.NewSession(cfg, aiClient)
-
-			// If message provided, send it and exit (or continue in interactive mode)
-			if len(args) > 0 {
-				message := args[0]
-				singleShot, _ := cmd.Flags().GetBool("single")
-
-				if err := session.SendMessage(ctx, nil, message); err != nil {
-					return err
-				}
-
-				// If single-shot mode, exit after first message
-				if singleShot {
-					return nil
-				}
-			}
+			session.AddObserver(cm)
+			cm.AddObserver(session)
 
 			// Enter interactive mode
-			return session.InteractiveMode(ctx, nil)
+			go session.InteractiveMode(ctx)
+			p := tea.NewProgram(cm, tea.WithAltScreen())
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("error running interactive mode: %w", err)
+			}
+
+			return nil
 		},
 	}
 
