@@ -31,12 +31,7 @@ type Session struct {
 
 	permitToolCall chan bool
 	permittedTools map[string]bool
-
-	// Streaming-related fields
-	currentStream    <-chan ai.MessageChunk
-	streamContext    context.Context
-	streamFirstChunk ai.MessageChunk
-	streamStarted    bool
+	toolCalls      chan *ai.ToolCall
 
 	events   chan any // events going out to the UI
 	uievents chan any // events coming in from the UI
@@ -66,11 +61,12 @@ func NewSession(cfg *config.Config, client ai.Provider) *Session {
 		files:          files.NewContext(cfg),
 		workingDir:     wd,
 		tools:          tt,
-		events:         make(chan any),
-		uievents:       make(chan any),
+		events:         make(chan any, 2),
+		uievents:       make(chan any, 2),
 		mu:             sync.Mutex{},
 		permittedTools: map[string]bool{},
-		permitToolCall: make(chan bool),
+		permitToolCall: make(chan bool, 2),
+		toolCalls:      make(chan *ai.ToolCall, 2),
 	}
 }
 
@@ -81,36 +77,70 @@ func (s *Session) InteractiveMode(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 
+		case tc := <-s.toolCalls:
+			go s.handleToolCall(ctx, tc)
+
 		case ev := <-s.uievents:
-			switch msg := ev.(type) {
-			case ui.EventUserPrompt:
-				s.messages = append(s.messages, ai.Message{
-					Role:    "user",
-					Content: string(msg),
-				})
+			log.Println("[session] got UI event")
+			s.handleUIEvent(ctx, ev)
 
-				go s.SendMessage(ctx, string(msg))
-
-			case ui.EventPermitToolUse:
-				log.Printf("Tool permission granted for: %s", msg.Name)
-				s.permitToolCall <- true // tell the stream loop to continue
-				log.Printf("told stream loop to continue")
-
-			case ui.EventPermitToolUseThisSession:
-				log.Printf("Tool permission granted for this session: %s\n", msg.Name)
-				s.permittedTools[msg.Name] = true
-				s.permitToolCall <- true // tell the stream loop to continue
-				log.Printf("told stream loop to continue")
-
-			case ui.EventCancelToolUse:
-				log.Printf("Tool use cancelled for: %s\n", msg.Name)
-				s.permitToolCall <- false // tell the stream loop to continue
-				log.Printf("told stream loop to continue")
-
-			default:
-				log.Printf("Unknown UI event: %T %+v", ev, ev)
-			}
 		}
+	}
+}
+
+func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
+	log.Print("[session] handling tool call for tool: ", tc.Name)
+
+	if !tools.IsValid(s.tools, tc.Name) {
+		log.Println("[session] Tool not found:", tc.Name)
+		s.messages = append(s.messages, ai.Message{
+			Role:       "user",
+			Content:    "Tool not found: `" + tc.Name + "`, available tools are: " + strings.Join(tools.GetNames(s.tools), ", "),
+			ToolCallID: tc.ID,
+		})
+		s.sendFullContext(ctx)
+		return
+	}
+
+	// Check if the tool is permitted, otherwise request permission from UI
+	if _, permitted := s.permittedTools[tc.Name]; !permitted {
+		log.Println("[session] Requesting permission for tool:", tc.Name)
+		s.events <- ui.EventToolCall(*tc)
+		log.Println("[session] Waiting for tool call permission...")
+		if ok := <-s.permitToolCall; !ok {
+			log.Println("[session] Permission denied by UI to call tool:", tc.Name)
+			return
+		}
+	}
+
+	log.Println("[session] Permission granted to call tool:", tc.Name)
+	output := s.executeTool(tc)
+	s.respondWithToolOutput(ctx, tc.ID, output)
+}
+
+func (s *Session) handleUIEvent(ctx context.Context, ev any) {
+	switch msg := ev.(type) {
+	case ui.EventUserPrompt:
+		s.SendMessage(ctx, string(msg))
+
+	case ui.EventPermitToolUse:
+		log.Printf("[session] Tool permission granted for: %s", msg.Name)
+		s.permitToolCall <- true // tell the stream loop to continue
+		log.Printf("[session] told stream loop to continue")
+
+	case ui.EventPermitToolUseThisSession:
+		log.Printf("[session] Tool permission granted for this session: %s\n", msg.Name)
+		s.permittedTools[msg.Name] = true
+		s.permitToolCall <- true // tell the stream loop to continue
+		log.Printf("[session] told stream loop to continue")
+
+	case ui.EventCancelToolUse:
+		log.Printf("[session] Tool use cancelled for: %s\n", msg.Name)
+		s.permitToolCall <- false // tell the stream loop to continue
+		log.Printf("[session] told stream loop to continue")
+
+	default:
+		log.Printf("[session] Unknown UI event: %T %+v", ev, ev)
 	}
 }
 
@@ -120,10 +150,10 @@ func (s *Session) executeTool(tool *ai.ToolCall) string {
 }
 
 func (s *Session) respondWithToolOutput(ctx context.Context, toolUseID string, output string) {
-	log.Printf("responding to tool call: %s with output %s", toolUseID, output)
+	log.Printf("[session] responding to tool call: %s with output %s", toolUseID, output)
 
 	s.messages = append(s.messages, ai.Message{
-		Role:       "user",
+		Role:       "tool",
 		Content:    output,
 		ToolCallID: toolUseID,
 	})
@@ -131,84 +161,12 @@ func (s *Session) respondWithToolOutput(ctx context.Context, toolUseID string, o
 	s.sendFullContext(ctx)
 }
 
-// StartStream begins a new message stream
-func (s *Session) StartStream(ctx context.Context) (string, error) {
-	// Reset streaming state
-	s.streamStarted = false
-	s.currentStream = nil
-	s.streamFirstChunk = ai.MessageChunk{}
-	s.streamContext = ctx
-
-	// Start streaming
-	stream, err := s.client.StreamMessage(ctx, s.messages)
-	if err != nil {
-		return "", err
-	}
-
-	s.events <- ui.EventStreamStarted("")
-
-	var response strings.Builder
-loop:
-	for chunk := range stream {
-		switch chunk.Type() {
-		case ai.ChunkToolCall:
-
-			// Check if the tool is permitted, otherwise request permission from UI
-			if _, permitted := s.permittedTools[chunk.ToolCall.Name]; !permitted {
-				log.Println("Requesting permission for tool:", chunk.ToolCall.Name)
-				s.events <- ui.EventToolCall(*chunk.ToolCall)
-				log.Println("Waiting for tool call permission...")
-				if ok := <-s.permitToolCall; !ok {
-					continue
-				}
-			}
-
-			log.Println("Permission granted to call tool:", chunk.ToolCall.Name)
-			output := s.executeTool(chunk.ToolCall)
-			s.respondWithToolOutput(ctx, chunk.ToolCall.ID, output)
-			break loop
-
-		case ai.ChunkMessage:
-			s.events <- ui.EventStreamChunk(chunk.String())
-			response.WriteString(chunk.String())
-
-		case ai.ChunkThink:
-			s.events <- ui.EventStreamThink(chunk.String())
-		default:
-			log.Println("Unknown chunk type:", chunk.Type())
-		}
-	}
-
-	log.Println("stream loop ended")
-
-	// Store stream for subsequent processing
-	s.currentStream = stream
-	s.streamStarted = true
-
-	return response.String(), nil
-}
-
 func (s *Session) Observe(events chan any) {
 	s.uievents = events
 }
 
-// EndStream finalizes the current stream
-func (s *Session) EndStream(finalContent string) {
-	if !s.streamStarted {
-		return
-	}
-
-	s.events <- ui.EventStreamEnded(finalContent)
-
-	// Reset streaming state
-	s.streamStarted = false
-	s.currentStream = nil
-	s.streamFirstChunk = ai.MessageChunk{}
-	log.Println("STREAM ENDED")
-}
-
-// SendMessage starts the process of waiting for streaming chunks from the LLM
-// and feeding them to the UI
+// SendMessage add a new user message to the conversation and then sends the
+// fulll context to the LLM
 func (s *Session) SendMessage(ctx context.Context, message string) error {
 	// Add user message to conversation
 	s.messages = append(s.messages, ai.Message{
@@ -219,26 +177,59 @@ func (s *Session) SendMessage(ctx context.Context, message string) error {
 	return s.sendFullContext(ctx)
 }
 
+func (s *Session) handleStreamChunk(chunk ai.MessageChunk) {
+	switch chunk.Type() {
+	case ai.ChunkMessage:
+		s.events <- ui.EventStreamChunk(chunk.String())
+	case ai.ChunkThink:
+		s.events <- ui.EventStreamThink(chunk.String())
+	}
+}
+
 // sendFullContext sends a full conversation context to the LLM, using streaming
 func (s *Session) sendFullContext(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Start streaming
-	res, err := s.StartStream(ctx)
-	if err != nil {
-		s.events <- ui.EventStreamErr(err)
-		s.EndStream("")
-		return err
+	strm := NewStream(s.client)
+	strm.OnChunk(s.handleStreamChunk)
+
+	strm.OnStart(func() {
+		log.Println("[session] stream started")
+		s.events <- ui.EventStreamStarted("")
+	})
+
+	strm.OnEnd(func(msg string) {
+		log.Println("[session] stream ended")
+		s.events <- ui.EventStreamEnded(msg)
+	})
+
+	log.Println("[session] starting stream")
+	strm.Start(ctx, s.messages)
+
+	strm.Wait()
+	log.Println("[session] stream is done")
+
+	if strm.Content() != "" {
+		log.Println("[session] stream ended with content, updating conversation")
+
+		// Add assistant message
+		s.messages = append(s.messages, ai.Message{
+			Role:    "assistant",
+			Content: strm.Content(),
+		})
 	}
 
-	s.EndStream(res)
+	if tc := strm.ToolCall(); tc != nil {
+		s.messages = append(s.messages, ai.Message{
+			Role:       "assistant",
+			Content:    "Request to use tool: `" + tc.Name + "` with args: `" + string(tc.Input) + "`",
+			ToolCallID: tc.ID,
+		})
 
-	// Add assistant message
-	s.messages = append(s.messages, ai.Message{
-		Role:    "assistant",
-		Content: res,
-	})
+		log.Println("[session] stream ended with tool call, passing it off")
+		s.toolCalls <- tc
+	}
 
 	return nil
 }

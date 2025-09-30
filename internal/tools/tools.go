@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -212,6 +213,8 @@ func ExecuteTool(cfg *config.Config, toolCall ToolUse, workingDir string) ToolRe
 		result.Content = content
 	}
 
+	log.Println("[tools] tool output:", result.Content)
+
 	return result
 }
 
@@ -276,6 +279,10 @@ func listFiles(cfg config.Config, input json.RawMessage, workingDir string) (str
 
 	targetPath := filepath.Join(workingDir, params.Path)
 
+	if IsExcluded(cfg, targetPath) {
+		return "ERROR: the requested path does not exist", nil
+	}
+
 	var files []string
 	if params.Recursive {
 		err := filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
@@ -283,10 +290,20 @@ func listFiles(cfg config.Config, input json.RawMessage, workingDir string) (str
 				return err
 			}
 			relPath, _ := filepath.Rel(workingDir, path)
+
 			fileType := "file"
 			if info.IsDir() {
+				if IsExcluded(cfg, path) {
+					return filepath.SkipDir
+				}
+
 				fileType = "directory"
 			}
+
+			if IsExcluded(cfg, path) {
+				return nil
+			}
+
 			files = append(files, fmt.Sprintf("%s (%s, %d bytes)", relPath, fileType, info.Size()))
 			return nil
 		})
@@ -307,6 +324,11 @@ func listFiles(cfg config.Config, input json.RawMessage, workingDir string) (str
 			if entry.IsDir() {
 				fileType = "directory"
 			}
+
+			if IsExcluded(cfg, entry.Name()) {
+				continue
+			}
+
 			files = append(files, fmt.Sprintf("%s (%s, %d bytes)", entry.Name(), fileType, info.Size()))
 		}
 	}

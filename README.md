@@ -1,9 +1,8 @@
 # CLAI
 
-A **work-in-progress**chat CLI written in golang that can talk to Ollama (and others).
+A **work-in-progress** chat CLI written in golang that can talk to Ollama (and others).
 
-**WARNING: AI SLOP** much of this code was written by Claude Sonnet.  The current status is that it is working
-with self hosted Ollama models.  It is quite simple for now, and things are subject to change.
+The current status is that it is working with self hosted Ollama models.  Tool use is working but has not been extensively tested. It is quite simple for now, and things are subject to change.
 
 <img width="862" height="259" alt="image" src="https://github.com/user-attachments/assets/bc5d3972-c985-46d4-8fff-eb8e9af64873" />
 
@@ -85,15 +84,16 @@ In order of priority.
 - [x] working chat with ollama models
 - [x] add reasoning output
 - [ ] get errors and system messages showing in the UI
-- [ ] turn thinking output on and off with `/thinking` and config item
+- [ ] cancel running inference with CTRL+C
 - [ ] send files in prompt when `@filename` is in the prompt
-- [ ] add `search_file` and `list_files` tools
-- [ ] ask for permission for the AI to use tools
-- [ ] add `read_file` and `write_file` tools
+- [x] add `search_file` and `list_files` tools
+- [x] ask for permission for the AI to use tools
+- [x] add `read_file` and `write_file` tools
 - [ ] add list `/models` command
 - [ ] add `/model <modelname>` command
 - [ ] add `/clear` command to reset the prompt
 - [ ] add `/quit` command to exit
+- [ ] turn thinking output on and off with `/thinking` and config item
 - [ ] save chat history to file
 - [ ] add `run_command` tool
 - [ ] working chat with anthropic models

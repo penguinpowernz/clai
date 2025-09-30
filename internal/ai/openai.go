@@ -58,7 +58,7 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 	}
 
 	data, _ := json.MarshalIndent(respBody, "", "  ")
-	log.Println(string(data))
+	log.Println("[client] request payload:", string(data))
 
 	return &Response{
 		Content:      respBody.Choices[0].Message.Content,
@@ -89,7 +89,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	log.Println("sending request: ", string(jsonData))
+	log.Println("[client] sending request: ", string(jsonData))
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -133,7 +133,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 			if len(line) == 0 {
 				continue
 			}
-			log.Println("line:", string(line))
+			log.Println("[client] line:", string(line))
 
 			// SSE format: "data: {...}"
 			if !bytes.HasPrefix(line, []byte("data: ")) {
@@ -149,15 +149,12 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 
 			var chunk openAIStreamChunk
 			if err := json.Unmarshal(data, &chunk); err != nil {
-				log.Printf("Failed to parse chunk: %v\n", err)
-				if c.config.Verbose {
-					fmt.Printf("Failed to parse chunk: %v\n", err)
-				}
+				log.Printf("[client] Failed to parse chunk: %v\n", err)
 				continue
 			}
 
 			if len(chunk.Choices) > 0 && len(chunk.Choices[0].Delta.ToolCalls) > 0 {
-				log.Printf("processing tool calls %+v", chunk.Choices[0].Delta.ToolCalls)
+				log.Printf("[client] processing tool calls %+v", chunk.Choices[0].Delta.ToolCalls)
 				for _, call := range chunk.Choices[0].Delta.ToolCalls {
 					select {
 					case streamChan <- MessageChunk{typ: ChunkToolCall, ToolCall: c.parseToolCall(call)}:
@@ -193,9 +190,9 @@ func (c *OpenAIClient) parseToolCall(call openAIToolCall) *ToolCall {
 		ID:   call.ID,
 		Name: call.Function.Name,
 	}
-	log.Printf("ARGS %s", string(call.Function.Arguments))
+	log.Printf("[client] ARGS %s", string(call.Function.Arguments))
 	err := json.Unmarshal([]byte(call.Function.Arguments), &tc.Input)
-	log.Printf("ARGS2 %s %+v", err, tc.Input)
+	log.Printf("[client] ARGS2 %s %+v", err, tc.Input)
 	return tc
 }
 

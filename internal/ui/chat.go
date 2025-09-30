@@ -168,7 +168,7 @@ func (m *ChatModel) onSystemMessage(msg string) {
 
 func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 	// Log tool call
-	log.Println("Tool call received in UI:", toolCall.Name)
+	log.Println("[ui] Tool call received in UI:", toolCall.Name)
 
 	// Set pending tool call and switch to tool permission mode
 	x := ai.ToolCall(toolCall)
@@ -196,7 +196,7 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 }
 
 func (m *ChatModel) onStreamStarted() {
-	log.Println("STREAM STARTED")
+	log.Println("[ui] STREAM STARTED")
 	m.waiting = true
 	m.currentStream.Reset()
 
@@ -244,7 +244,7 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
-	log.Printf("UPDATED STREAM CHUNK, CURRENT: %s", m.currentStream.String())
+	log.Printf("[ui] UPDATED STREAM CHUNK, CURRENT: %s", m.currentStream.String())
 }
 
 func (m *ChatModel) onStreamEnded(finalContent string) {
@@ -262,7 +262,7 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
-	log.Println("we ended! final was ", finalContent)
+	log.Println("[ui] we ended! final was ", finalContent)
 }
 
 func (m ChatModel) Init() tea.Cmd {
@@ -280,14 +280,14 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 	selectedOption := m.toolPermissionOptions[m.selectedOption]
 	switch selectedOption {
 	case optAllowToolThisTime:
-		log.Println("allowing tool use for this time")
+		log.Println("[ui] allowing tool use for this time")
 		m.out <- EventPermitToolUse(*m.pendingToolCall)
 		// TODO: Execute the tool with the provided arguments
 		// The tool name is: m.pendingToolCall.Name
 		// The tool args are: m.pendingToolCall.Args
 
 	case optAllowToolThisSession:
-		log.Println("allowing tool use for this session")
+		log.Println("[ui] allowing tool use for this session")
 		m.out <- EventPermitToolUseThisSession(*m.pendingToolCall)
 		// TODO: Add this tool to permanently allowed tools list
 		// TODO: Execute the tool with the provided arguments
@@ -295,7 +295,7 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 		// The tool args are: m.pendingToolCall.Args
 
 	case optDisallowTool:
-		log.Println("cancelling tool use")
+		log.Println("[ui] cancelling tool use")
 		m.out <- EventCancelToolUse(*m.pendingToolCall)
 		// TODO: Send cancellation message back to the LLM
 		// Let the LLM know that tool use was cancelled by user
