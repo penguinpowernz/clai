@@ -98,6 +98,6 @@ In order of priority.
 
 # Code of conduct
 
-Our community is built on the principles of meritocracy, where contributions are valued based on their quality, relevance, and impact. We strive to create an inclusive environment where individuals can collaborate, learn, and grow without the influence of personal biases, affiliations, or identities.
+Our community is built on the principles of **meritocracy**, where contributions are valued based on their quality, relevance, and impact. We strive to create an inclusive environment where individuals can collaborate, learn, and grow **without the influence of personal biases, affiliations, or identities**.
 
 [Non-Toxic CoC](https://github.com/penguinpowernz/clai/blob/main/CODE_OF_CONDUCT.md)
