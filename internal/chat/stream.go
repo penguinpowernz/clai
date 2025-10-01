@@ -76,7 +76,12 @@ func (s *Stream) Start(ctx context.Context, cctx []ai.Message) (err error) {
 		case <-ctx.Done():
 			log.Println("[stream] context done")
 			break // this will break out of the loop thanks to the ctx.Err() check
-		case chunk := <-s.stream:
+		case chunk, ok := <-s.stream:
+			if !ok {
+				log.Println("[stream] stream channel closed")
+				s.Close()
+				break
+			}
 			switch chunk.Type() {
 			case ai.ChunkToolCall:
 				s.toolCall = chunk.ToolCall

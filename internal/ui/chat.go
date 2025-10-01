@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/penguinpowernz/clai/internal/ai"
 )
 
@@ -19,6 +20,8 @@ const (
 	optAllowToolThisTime    = "Allow to run this time only"
 	optAllowToolThisSession = "Allow, and don't ask again this session"
 	optDisallowTool         = "Don't allow to run the tool, give the prompt back"
+
+	maxLineLength = 120
 )
 
 type EventStreamStarted string
@@ -32,6 +35,10 @@ type EventCancelToolUse ai.ToolCall
 type EventSystemMsg string
 type EventUserPrompt string
 type EventStreamErr error
+type EventAssistantMessage string
+type EventRunningTool ai.ToolCall
+type EventRunningToolDone string
+type EventToolOutput string
 
 type UIObserver interface {
 	Observe(chan any)
@@ -44,7 +51,8 @@ type ChatModel struct {
 	textarea      textarea.Model
 	spinner       spinner.Model
 	messages      []chatMessage
-	waiting       bool
+	typing        bool
+	runningTool   bool
 	thinking      bool
 	err           error
 	width         int
@@ -167,6 +175,9 @@ func (m *ChatModel) onSystemMessage(msg string) {
 }
 
 func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
+	m.thinking = false
+	m.typing = false
+
 	// Log tool call
 	log.Println("[ui] Tool call received in UI:", toolCall.Name)
 
@@ -186,8 +197,8 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 
 	// Add a system message about the tool call
 	m.messages = append(m.messages, chatMessage{
-		role:    "system",
-		content: fmt.Sprintf("LLM wants to use tool: %s%s\n\nUse arrow keys and Ctrl+D to select:", toolCall.Name, argsStr),
+		role:    "assistant",
+		content: fmt.Sprintf("I need to use the tool \"%s\" with args %s", toolCall.Name, argsStr),
 	})
 
 	// Update viewport
@@ -195,9 +206,25 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 	m.viewport.GotoBottom()
 }
 
+func (m *ChatModel) onToolOutput(output string) {
+	if lines := strings.Split(output, "\n"); len(lines) > 3 {
+		lines = lines[:3]
+		for i := range lines {
+			lines[i] = "> " + lines[i]
+		}
+		output = strings.Join(lines[:3], "\n") + "\n> [...]"
+	}
+
+	// Add tool output to chat messages
+	m.messages = append(m.messages, chatMessage{
+		role:    "tool",
+		content: "Tool output:\n" + output,
+	})
+}
+
 func (m *ChatModel) onStreamStarted() {
 	log.Println("[ui] STREAM STARTED")
-	m.waiting = true
+	m.typing = false
 	m.currentStream.Reset()
 
 	m.thinking = true
@@ -232,6 +259,7 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 			content: "",
 		})
 		m.thinking = false
+		m.typing = true
 	}
 
 	m.currentStream.WriteString(chunk)
@@ -244,11 +272,11 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
-	log.Printf("[ui] UPDATED STREAM CHUNK, CURRENT: %s", m.currentStream.String())
 }
 
 func (m *ChatModel) onStreamEnded(finalContent string) {
-	m.waiting = false
+	m.typing = false
+	m.thinking = false
 
 	// Finalize the streaming message
 	if len(m.messages) > 0 && m.messages[len(m.messages)-1].role == "assistant-streaming" {
@@ -263,6 +291,18 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
 	log.Println("[ui] we ended! final was ", finalContent)
+}
+
+func (m *ChatModel) onAssistantMessage(msg string) {
+	// Add assistant message to chat messages
+	m.messages = append(m.messages, chatMessage{
+		role:    "assistant",
+		content: msg,
+	})
+
+	// Update viewport
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
 }
 
 func (m ChatModel) Init() tea.Cmd {
@@ -282,6 +322,7 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 	case optAllowToolThisTime:
 		log.Println("[ui] allowing tool use for this time")
 		m.out <- EventPermitToolUse(*m.pendingToolCall)
+		m.runningTool = true
 		// TODO: Execute the tool with the provided arguments
 		// The tool name is: m.pendingToolCall.Name
 		// The tool args are: m.pendingToolCall.Args
@@ -289,6 +330,7 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 	case optAllowToolThisSession:
 		log.Println("[ui] allowing tool use for this session")
 		m.out <- EventPermitToolUseThisSession(*m.pendingToolCall)
+		m.runningTool = true
 		// TODO: Add this tool to permanently allowed tools list
 		// TODO: Execute the tool with the provided arguments
 		// The tool name is: m.pendingToolCall.Name
@@ -330,6 +372,10 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Don't update the old list component when in tool permission mode
 	if m.pendingToolCall == nil {
 		m.toolPermissionList, listCmd = m.toolPermissionList.Update(msg)
+	}
+
+	if evt := fmt.Sprintf("%T", msg); evt[0:8] == "ui.Event" {
+		log.Println("[ui.event]", evt)
 	}
 
 	switch msg := msg.(type) {
@@ -383,7 +429,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Regular message sending (only when NOT in tool permission mode)
-			if m.waiting {
+			if m.typing {
 				return m, nil
 			}
 
@@ -400,7 +446,11 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Clear textarea
 			m.textarea.Reset()
-			m.waiting = true
+
+			if userMsg[0] != '/' {
+				m.thinking = true
+			}
+
 			m.currentStream.Reset()
 
 			// Update viewport
@@ -444,9 +494,48 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.OnToolCallReceived(msg)
 		return m, listen(m)
 
+	case EventAssistantMessage:
+		m.onAssistantMessage(string(msg))
+		return m, listen(m)
+
+	case EventRunningTool:
+		m.onRunningTool(msg)
+
+		return m, tea.Batch(
+			listen(m),
+			m.spinner.Tick,
+		)
+
+	case EventRunningToolDone:
+		m.runningTool = false
+		m.typing = false
+		m.thinking = true
+		return m, tea.Batch(
+			listen(m),
+			m.spinner.Tick,
+		)
+
+	case EventToolOutput:
+		m.onToolOutput(string(msg))
+		return m, listen(m)
+
 	}
 
 	return m, tea.Batch(taCmd, vpCmd, spCmd, listCmd)
+}
+
+func (m ChatModel) onRunningTool(msg EventRunningTool) {
+	m.runningTool = true
+	m.typing = false
+	m.thinking = false
+
+	m.messages = append(m.messages, chatMessage{
+		role:    "system",
+		content: fmt.Sprintf("Running tool: %s with args: %s", msg.Name, msg.Input),
+	})
+
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
 }
 
 func (m ChatModel) View() string {
@@ -455,10 +544,18 @@ func (m ChatModel) View() string {
 	}
 
 	var status string
-	if m.waiting {
+	switch {
+	case m.typing:
+		m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("201"))
+		status = fmt.Sprintf("%s Typing...", m.spinner.View())
+	case m.thinking:
+		m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("40"))
 		status = fmt.Sprintf("%s Thinking...", m.spinner.View())
-	} else {
-		status = "Ready"
+	case m.runningTool:
+		m.spinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("21"))
+		status = fmt.Sprintf("%s Running tool...", m.spinner.View())
+	default:
+		status = "👍 Ready"
 	}
 
 	var help string
@@ -469,7 +566,7 @@ func (m ChatModel) View() string {
 	if m.pendingToolCall != nil {
 		help = helpStyle.Render("↑/↓: Navigate • Ctrl+D/ENTER: Select • Ctrl+C: Quit")
 		inputArea = m.renderToolPermissionOptions()
-		status = "Tool Permission Required"
+		status = "👮 Tool Permission Required"
 
 		// Reduce viewport height to make room for the tool permission list
 		// We need extra space for the list (about 5 lines)
@@ -515,13 +612,16 @@ func (m ChatModel) renderMessages() string {
 			b.WriteString(systemStyle.Render("System: "))
 			b.WriteString(msg.content)
 			b.WriteString("\n\n")
+		case "tool":
+			b.WriteString(msg.content)
+			b.WriteString("\n\n")
 		case "thinking":
 			b.WriteString(thinkingStyle.Render(msg.content))
 			b.WriteString("\n\n")
 		}
 	}
 
-	return b.String()
+	return wordwrap.String(b.String(), min(m.width, 80))
 }
 
 func welcomeMessage() string {
@@ -544,33 +644,19 @@ func welcomeMessage() string {
 
 // Styles
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("205")).
-			MarginBottom(1)
-
-	userStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("86")).
-			Bold(true)
-
-	assistantStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212")).
-			Bold(true)
-
-	systemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("21")).
-			Bold(true)
-
-	cursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("212"))
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
-
-	thinkingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("243"))
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
-			Bold(true)
+	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).MarginBottom(1)
+	userStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
+	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
+	systemStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("21")).Bold(true)
+	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
+	helpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	thinkingStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 )
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

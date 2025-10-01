@@ -372,7 +372,9 @@ func readFile(cfg config.Config, input json.RawMessage, workingDir string) (stri
 		return "", err
 	}
 
-	return string(content), nil
+	targetPath = strings.Replace(targetPath, workingDir, "", 1)
+	out := "// " + targetPath + "\n" + string(content)
+	return out, nil
 }
 
 func writeFile(cfg config.Config, input json.RawMessage, workingDir string) (string, error) {

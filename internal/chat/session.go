@@ -113,8 +113,11 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 		}
 	}
 
+	s.events <- ui.EventRunningTool(*tc)
 	log.Println("[session] Permission granted to call tool:", tc.Name)
 	output := s.executeTool(tc)
+	s.events <- ui.EventRunningToolDone("")
+	s.events <- ui.EventToolOutput(output)
 	s.respondWithToolOutput(ctx, tc.ID, output)
 }
 
