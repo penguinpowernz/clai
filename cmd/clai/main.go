@@ -64,16 +64,21 @@ Run without arguments to enter interactive mode, or provide a message to send im
 			return initConfig()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			f, err := os.OpenFile("clai.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			cfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			if err := os.MkdirAll(cfg.SessionDir, 0755); err != nil {
+				return fmt.Errorf("failed to create session directory: %w", err)
+			}
+
+			f, err := os.OpenFile(filepath.Join(cfg.SessionDir, "clai.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf("failed to open log file: %w", err)
 			}
 			defer f.Close()
 			log.SetOutput(f)
-			cfg, err := config.Load()
-			if err != nil {
-				return fmt.Errorf("failed to load config: %w", err)
-			}
 
 			aiClient, err := ai.NewClient(cfg)
 			if err != nil {
@@ -104,17 +109,13 @@ Run without arguments to enter interactive mode, or provide a message to send im
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.clai.yml)")
-	rootCmd.PersistentFlags().String("model", "", "AI model to use (e.g., claude-sonnet-4-20250514)")
-	rootCmd.PersistentFlags().String("provider", "", "AI provider (anthropic, openai)")
+	rootCmd.PersistentFlags().String("model", "", "AI model to use (e.g., gpt-oss:latest)")
+	rootCmd.PersistentFlags().String("provider", "", "AI provider (ollama, openai)")
+	rootCmd.PersistentFlags().String("session", "", "The session ID to load history from")
 	rootCmd.PersistentFlags().Bool("verbose", false, "verbose output")
-	rootCmd.PersistentFlags().Bool("no-color", false, "disable colored output")
 
 	// Chat-specific flags
 	rootCmd.Flags().StringSliceP("files", "f", []string{}, "files to include in context")
-	rootCmd.Flags().Bool("stream", true, "stream responses")
-	rootCmd.Flags().Bool("no-git", false, "disable git integration")
-	rootCmd.Flags().BoolP("single", "s", false, "single-shot mode (exit after first response)")
-	rootCmd.Flags().Bool("auto-apply", false, "automatically apply code changes without confirmation")
 
 	// Bind flags to viper
 	viper.BindPFlag("model", rootCmd.PersistentFlags().Lookup("model"))

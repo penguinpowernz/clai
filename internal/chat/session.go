@@ -56,6 +56,12 @@ func NewSession(cfg *config.Config, client ai.Provider, id string) *Session {
 	wd, _ := os.Getwd()
 	tt := tools.GetAvailableTools()
 	client.SetTools(tt)
+
+	pt := make(map[string]bool)
+	for _, t := range cfg.PermittedTools {
+		pt[t] = true
+	}
+
 	return &Session{
 		id:             id,
 		config:         cfg,
@@ -67,7 +73,7 @@ func NewSession(cfg *config.Config, client ai.Provider, id string) *Session {
 		events:         make(chan any, 2),
 		uievents:       make(chan any, 2),
 		mu:             sync.Mutex{},
-		permittedTools: map[string]bool{},
+		permittedTools: pt,
 		permitToolCall: make(chan bool, 2),
 		toolCalls:      make(chan *ai.ToolCall, 2),
 	}

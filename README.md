@@ -32,15 +32,9 @@ base_url: http://192.168.1.118:11434/v1
 
 # Behavior
 auto_apply: false      # Automatically apply code changes
-auto_commit: false     # Automatically commit changes
-stream: true           # Stream responses
 context_files: 5       # Max files to include in context
 max_tokens: 4096       # Max tokens per request
 temperature: 0.7       # Model temperature (0.0 - 1.0)
-
-# Git
-use_git: true          # Enable git integration
-git_auto_stage: false  # Auto-stage changes
 
 # UI
 verbose: false         # Verbose logging

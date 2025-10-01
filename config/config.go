@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -20,25 +21,19 @@ type Config struct {
 
 	// Behavior settings
 	AutoApply    bool    `mapstructure:"auto_apply"`    // Auto-apply code changes
-	AutoCommit   bool    `mapstructure:"auto_commit"`   // Auto-commit changes
-	Stream       bool    `mapstructure:"stream"`        // Stream responses
 	ContextFiles int     `mapstructure:"context_files"` // Max files to include
 	MaxTokens    int     `mapstructure:"max_tokens"`    // Max tokens per request
 	Temperature  float64 `mapstructure:"temperature"`   // Model temperature
 
-	// Git settings
-	UseGit       bool `mapstructure:"use_git"`        // Enable git integration
-	GitAutoStage bool `mapstructure:"git_auto_stage"` // Auto-stage changes
-
 	// UI settings
-	NoColor bool   `mapstructure:"no_color"` // Disable colored output
-	Verbose bool   `mapstructure:"verbose"`  // Verbose logging
-	Editor  string `mapstructure:"editor"`   // Preferred editor
+	Verbose bool   `mapstructure:"verbose"` // Verbose logging
+	Editor  string `mapstructure:"editor"`  // Preferred editor
 
 	// File handling
 	ExcludePatterns []string `mapstructure:"exclude_patterns"` // Files/dirs to exclude
-	IncludeHidden   bool     `mapstructure:"include_hidden"`   // Include hidden files
+	IncludeHidden   bool     `mapstructure:"include_hidde n"`  // Include hidden files
 	MaxFileSize     int64    `mapstructure:"max_file_size"`    // Max file size in bytes
+	PermittedTools  []string `mapstructure:"permitted_tools"`  // Tools to allow
 
 	// Session settings
 	SessionDir     string `mapstructure:"session_dir"`      // Where to store sessions
@@ -56,14 +51,9 @@ func Load() (*Config, error) {
 		BaseURL:      "", // Will be set based on provider if empty
 		SystemPrompt: getDefaultSystemPrompt(),
 		AutoApply:    false,
-		AutoCommit:   false,
-		Stream:       true,
 		ContextFiles: 5,
 		MaxTokens:    4096,
 		Temperature:  0.7,
-		UseGit:       true,
-		GitAutoStage: false,
-		NoColor:      false,
 		Verbose:      false,
 		Editor:       getDefaultEditor(),
 		ExcludePatterns: []string{
@@ -77,15 +67,19 @@ func Load() (*Config, error) {
 		},
 		IncludeHidden:  false,
 		MaxFileSize:    1024 * 1024, // 1MB
-		SessionDir:     ".clai",
+		SessionDir:     "~/.clai",
 		SaveHistory:    true,
 		MaxHistorySize: 100,
+		PermittedTools: []string{"list_files", "search_file"},
 	}
 
 	// Unmarshal viper config into struct
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
+
+	// Replace ~ with home directory
+	cfg.SessionDir = strings.Replace(cfg.SessionDir, "~", os.Getenv("HOME"), 1)
 
 	// Load API key from environment if not in config
 	if cfg.APIKey == "" {
@@ -174,18 +168,12 @@ model: gpt-oss:latest
 
 # Behavior
 auto_apply: false      # Automatically apply code changes
-auto_commit: false     # Automatically commit changes
-stream: true           # Stream responses
 context_files: 5       # Max files to include in context
 max_tokens: 4096       # Max tokens per request
 temperature: 0.7       # Model temperature (0.0 - 1.0)
 
-# Git
-use_git: true          # Enable git integration
-git_auto_stage: false  # Auto-stage changes
 
 # UI
-no_color: false        # Disable colored output
 verbose: false         # Verbose logging
 editor: vim            # Preferred editor
 
@@ -203,6 +191,9 @@ include_hidden: false  # Include hidden files
 max_file_size: 1048576 # Max file size in bytes (1MB)
 
 # Session
+permitted_tools: # Permitted tools
+	- list_files
+	- search_file
 session_dir: .clai   # Where to store session data
 save_history: true     # Save conversation history
 max_history_size: 100  # Max messages to keep in history
@@ -230,10 +221,7 @@ func Display(cfg *Config) error {
 		fmt.Printf("  API Key: (not set)\n")
 	}
 	fmt.Printf("  Auto Apply: %t\n", cfg.AutoApply)
-	fmt.Printf("  Auto Commit: %t\n", cfg.AutoCommit)
-	fmt.Printf("  Stream: %t\n", cfg.Stream)
 	fmt.Printf("  Context Files: %d\n", cfg.ContextFiles)
-	fmt.Printf("  Use Git: %t\n", cfg.UseGit)
 	return nil
 }
 
