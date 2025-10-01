@@ -6,15 +6,18 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
 	"github.com/penguinpowernz/clai/internal/chat"
+	"github.com/penguinpowernz/clai/internal/history"
 	"github.com/penguinpowernz/clai/internal/ui"
 )
 
@@ -77,8 +80,12 @@ Run without arguments to enter interactive mode, or provide a message to send im
 				return fmt.Errorf("failed to create AI client: %w", err)
 			}
 
-			cm := ui.NewChatModel(ctx)
-			session := chat.NewSession(cfg, aiClient)
+			sessionID := generateSessionID()
+			history.SetSessionID(sessionID)
+			history.SetConfig(*cfg)
+
+			cm := ui.NewChatModel(ctx, *cfg)
+			session := chat.NewSession(cfg, aiClient, sessionID)
 			session.AddObserver(cm)
 			cm.AddObserver(session)
 
@@ -88,6 +95,8 @@ Run without arguments to enter interactive mode, or provide a message to send im
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("error running interactive mode: %w", err)
 			}
+
+			fmt.Println("Ended chat session", sessionID)
 
 			return nil
 		},
@@ -149,4 +158,8 @@ func initConfig() error {
 	}
 
 	return nil
+}
+
+func generateSessionID() string {
+	return uuid.New().String()[:6]
 }

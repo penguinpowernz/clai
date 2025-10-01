@@ -13,7 +13,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
+	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
+	"github.com/penguinpowernz/clai/internal/history"
 )
 
 const (
@@ -47,10 +49,11 @@ type UIObserver interface {
 // ChatModel is the bubbletea model for the REPL
 type ChatModel struct {
 	ctx           context.Context
+	cfg           config.Config
 	viewport      viewport.Model
 	textarea      textarea.Model
 	spinner       spinner.Model
-	messages      []chatMessage
+	messages      []ai.Message
 	typing        bool
 	runningTool   bool
 	thinking      bool
@@ -65,11 +68,6 @@ type ChatModel struct {
 	toolPermissionList    list.Model
 	toolPermissionOptions []string
 	selectedOption        int
-}
-
-type chatMessage struct {
-	role    string
-	content string
 }
 
 func createToolPermissionList() list.Model {
@@ -118,7 +116,7 @@ func (m ChatModel) renderToolPermissionOptions() string {
 	return b.String()
 }
 
-func NewChatModel(ctx context.Context) *ChatModel {
+func NewChatModel(ctx context.Context, cfg config.Config) *ChatModel {
 	ta := textarea.New()
 	ta.Placeholder = "Type your message... (Ctrl+D to send, Ctrl+C to quit)"
 	ta.Focus()
@@ -139,10 +137,11 @@ func NewChatModel(ctx context.Context) *ChatModel {
 
 	model := ChatModel{
 		ctx:                   ctx,
+		cfg:                   cfg,
 		textarea:              ta,
 		viewport:              vp,
 		spinner:               sp,
-		messages:              make([]chatMessage, 0),
+		messages:              make([]ai.Message, 0),
 		currentStream:         &strings.Builder{},
 		in:                    make(chan any),
 		out:                   make(chan any),
@@ -152,6 +151,19 @@ func NewChatModel(ctx context.Context) *ChatModel {
 	}
 
 	return &model
+}
+
+func (m *ChatModel) addMessage(role, msg string) {
+	m.messages = append(m.messages, ai.Message{
+		Role:    role,
+		Content: msg,
+	})
+
+	if m.cfg.SaveHistory == true {
+		if err := history.SaveHistory("ui", m.messages); err != nil {
+			log.Println("[ui] Error saving history:", err)
+		}
+	}
 }
 
 func (m *ChatModel) AddObserver(observer UIObserver) {
@@ -164,10 +176,7 @@ func (m *ChatModel) Observe(events chan any) {
 
 func (m *ChatModel) onSystemMessage(msg string) {
 	// Add system message to chat messages
-	m.messages = append(m.messages, chatMessage{
-		role:    "system",
-		content: msg,
-	})
+	m.addMessage("system", msg)
 
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
@@ -196,10 +205,7 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 	}
 
 	// Add a system message about the tool call
-	m.messages = append(m.messages, chatMessage{
-		role:    "assistant",
-		content: fmt.Sprintf("I need to use the tool \"%s\" with args %s", toolCall.Name, argsStr),
-	})
+	m.addMessage("assistant", fmt.Sprintf("I need to use the tool \"%s\" with args %s", toolCall.Name, argsStr))
 
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
@@ -216,10 +222,7 @@ func (m *ChatModel) onToolOutput(output string) {
 	}
 
 	// Add tool output to chat messages
-	m.messages = append(m.messages, chatMessage{
-		role:    "tool",
-		content: "Tool output:\n" + output,
-	})
+	m.addMessage("tool", "Tool output:\n"+output)
 }
 
 func (m *ChatModel) onStreamStarted() {
@@ -228,10 +231,7 @@ func (m *ChatModel) onStreamStarted() {
 	m.currentStream.Reset()
 
 	m.thinking = true
-	m.messages = append(m.messages, chatMessage{
-		role:    "thinking",
-		content: m.currentStream.String(),
-	})
+	m.addMessage("thinking", m.currentStream.String())
 
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
@@ -242,8 +242,8 @@ func (m *ChatModel) onStreamThink(chunk string) {
 	m.currentStream.WriteString(chunk)
 
 	// Update the last streaming message
-	if len(m.messages) > 0 && m.messages[len(m.messages)-1].role == "thinking" {
-		m.messages[len(m.messages)-1].content = m.currentStream.String()
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "thinking" {
+		m.messages[len(m.messages)-1].Content = m.currentStream.String()
 	}
 
 	m.viewport.SetContent(m.renderMessages())
@@ -254,10 +254,7 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 	if m.thinking {
 		m.currentStream.Reset()
 		// Add a streaming assistant message
-		m.messages = append(m.messages, chatMessage{
-			role:    "assistant-streaming",
-			content: "",
-		})
+		m.addMessage("assistant-streaming", "")
 		m.thinking = false
 		m.typing = true
 	}
@@ -265,8 +262,8 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 	m.currentStream.WriteString(chunk)
 
 	// Update the last streaming message
-	if len(m.messages) > 0 && m.messages[len(m.messages)-1].role == "assistant-streaming" {
-		m.messages[len(m.messages)-1].content = m.currentStream.String()
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "assistant-streaming" {
+		m.messages[len(m.messages)-1].Content = m.currentStream.String()
 	}
 
 	// Update viewport
@@ -279,9 +276,9 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	m.thinking = false
 
 	// Finalize the streaming message
-	if len(m.messages) > 0 && m.messages[len(m.messages)-1].role == "assistant-streaming" {
-		m.messages[len(m.messages)-1].role = "assistant"
-		m.messages[len(m.messages)-1].content = finalContent
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "assistant-streaming" {
+		m.messages[len(m.messages)-1].Role = "assistant"
+		m.messages[len(m.messages)-1].Content = finalContent
 	}
 
 	// Reset current stream
@@ -295,10 +292,7 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 
 func (m *ChatModel) onAssistantMessage(msg string) {
 	// Add assistant message to chat messages
-	m.messages = append(m.messages, chatMessage{
-		role:    "assistant",
-		content: msg,
-	})
+	m.addMessage("assistant", msg)
 
 	// Update viewport
 	m.viewport.SetContent(m.renderMessages())
@@ -439,10 +433,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Add user message
-			m.messages = append(m.messages, chatMessage{
-				role:    "user",
-				content: userMsg,
-			})
+			m.addMessage(
+				"user", userMsg)
 
 			// Clear textarea
 			m.textarea.Reset()
@@ -466,7 +458,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyCtrlL:
 			// Clear screen (only when NOT in tool permission mode)
 			if m.pendingToolCall == nil {
-				m.messages = make([]chatMessage, 0)
+				m.messages = make([]ai.Message, 0)
 				m.viewport.SetContent(welcomeMessage())
 			}
 		}
@@ -529,10 +521,7 @@ func (m ChatModel) onRunningTool(msg EventRunningTool) {
 	m.typing = false
 	m.thinking = false
 
-	m.messages = append(m.messages, chatMessage{
-		role:    "system",
-		content: fmt.Sprintf("Running tool: %s with args: %s", msg.Name, msg.Input),
-	})
+	m.addMessage("system", fmt.Sprintf("Running tool: %s with args: %s", msg.Name, msg.Input))
 
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
@@ -596,32 +585,32 @@ func (m ChatModel) renderMessages() string {
 
 	var b strings.Builder
 	for _, msg := range m.messages {
-		switch msg.role {
+		switch msg.Role {
 		case "user":
 			b.WriteString(userStyle.Render("You: "))
-			b.WriteString(msg.content)
+			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "assistant", "assistant-streaming":
 			b.WriteString(assistantStyle.Render("Assistant: "))
-			b.WriteString(msg.content)
-			if msg.role == "assistant-streaming" {
+			b.WriteString(msg.Content)
+			if msg.Role == "assistant-streaming" {
 				b.WriteString(cursorStyle.Render("▋"))
 			}
 			b.WriteString("\n\n")
 		case "system":
 			b.WriteString(systemStyle.Render("System: "))
-			b.WriteString(msg.content)
+			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "tool":
-			b.WriteString(msg.content)
+			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "thinking":
-			b.WriteString(thinkingStyle.Render(msg.content))
+			b.WriteString(thinkingStyle.Render(msg.Content))
 			b.WriteString("\n\n")
 		}
 	}
 
-	return wordwrap.String(b.String(), min(m.width, 80))
+	return wordwrap.String(b.String(), min(m.width, maxLineLength))
 }
 
 func welcomeMessage() string {
@@ -629,15 +618,21 @@ func welcomeMessage() string {
 		Foreground(lipgloss.Color("34")).
 		Render(`
 		
-                      ███      █████████  █████         █████████   ███████   ███                     
-                     ░███     ███░░░░░███░░███         ███░░░░░███ ░░░███    ░███                     
-            █████████░███    ███     ░░░  ░███        ░███    ░███   ░███    ░███ █████████           
- ██████████░░░░░░░░░ ░███   ░███          ░███        ░███████████   ░███    ░███░░░░░░░░░  ██████████
-░░░░░░░░░░  █████████░███   ░███          ░███        ░███░░░░░███   ░███    ░███ █████████░░░░░░░░░░ 
-           ░░░░░░░░░ ░███   ░░███     ███ ░███      █ ░███    ░███   ░███    ░███░░░░░░░░░            
-                     ░███    ░░█████████  ███████████ █████   █████ ███████  ░███                     
-                     ░░░      ░░░░░░░░░  ░░░░░░░░░░░ ░░░░░   ░░░░░ ░░░░░░░   ░░░                      
-                                                                                   
+
+		░██████████████████████████████████████████████████████████
+		░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 
+		
+                █████████  █████         █████████   ███████ 
+               ███░░░░░███░░███         ███░░░░░███ ░░░███   
+              ███     ░░░  ░███        ░███    ░███   ░███   
+             ░███          ░███        ░███████████   ░███   
+             ░███          ░███        ░███░░░░░███   ░███   
+             ░░███     ███ ░███      █ ░███    ░███   ░███   
+              ░░█████████  ███████████ █████   █████ ███████ 
+               ░░░░░░░░░  ░░░░░░░░░░░ ░░░░░   ░░░░░ ░░░░░░░  
+
+		░██████████████████████████████████████████████████████████
+		░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 `)
 
 }

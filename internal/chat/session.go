@@ -10,6 +10,7 @@ import (
 	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
 	"github.com/penguinpowernz/clai/internal/files"
+	"github.com/penguinpowernz/clai/internal/history"
 	"github.com/penguinpowernz/clai/internal/tools"
 	"github.com/penguinpowernz/clai/internal/ui"
 )
@@ -21,6 +22,7 @@ type UIObserver interface {
 
 // Session manages the conversation state
 type Session struct {
+	id         string
 	config     *config.Config
 	client     ai.Provider
 	messages   []ai.Message
@@ -50,11 +52,12 @@ func (s *Session) GetClient() ai.Provider {
 	return s.client
 }
 
-func NewSession(cfg *config.Config, client ai.Provider) *Session {
+func NewSession(cfg *config.Config, client ai.Provider, id string) *Session {
 	wd, _ := os.Getwd()
 	tt := tools.GetAvailableTools()
 	client.SetTools(tt)
 	return &Session{
+		id:             id,
 		config:         cfg,
 		client:         client,
 		messages:       make([]ai.Message, 0),
@@ -67,6 +70,15 @@ func NewSession(cfg *config.Config, client ai.Provider) *Session {
 		permittedTools: map[string]bool{},
 		permitToolCall: make(chan bool, 2),
 		toolCalls:      make(chan *ai.ToolCall, 2),
+	}
+}
+
+func (s *Session) AddMessage(message ai.Message) {
+	s.messages = append(s.messages, message)
+	if s.config.SaveHistory {
+		if err := history.SaveHistory("context", s.messages); err != nil {
+			log.Println("[session] failed to save history:", err)
+		}
 	}
 }
 
@@ -93,7 +105,7 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 
 	if !tools.IsValid(s.tools, tc.Name) {
 		log.Println("[session] Tool not found:", tc.Name)
-		s.messages = append(s.messages, ai.Message{
+		s.AddMessage(ai.Message{
 			Role:       "user",
 			Content:    "Tool not found: `" + tc.Name + "`, available tools are: " + strings.Join(tools.GetNames(s.tools), ", "),
 			ToolCallID: tc.ID,
@@ -121,10 +133,26 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 	s.respondWithToolOutput(ctx, tc.ID, output)
 }
 
+func (s *Session) handleCommand(ctx context.Context, cmd string) {
+	log.Println("[session] handling command:", cmd)
+
+	// res, err := commands.DefaultRegistry.Execute(ctx, cmd, &commands.Environment{
+	// 	Session:    s,
+	// 	Files:      s.files,
+	// 	Config:     s.config,
+	// 	WorkingDir: s.workingDir,
+	// })
+
+}
+
 func (s *Session) handleUIEvent(ctx context.Context, ev any) {
 	switch msg := ev.(type) {
 	case ui.EventUserPrompt:
-		s.SendMessage(ctx, string(msg))
+		if string(msg)[0] == '/' {
+			s.handleCommand(ctx, string(msg))
+		} else {
+			s.SendMessage(ctx, string(msg))
+		}
 
 	case ui.EventPermitToolUse:
 		log.Printf("[session] Tool permission granted for: %s", msg.Name)
@@ -155,7 +183,7 @@ func (s *Session) executeTool(tool *ai.ToolCall) string {
 func (s *Session) respondWithToolOutput(ctx context.Context, toolUseID string, output string) {
 	log.Printf("[session] responding to tool call: %s with output %s", toolUseID, output)
 
-	s.messages = append(s.messages, ai.Message{
+	s.AddMessage(ai.Message{
 		Role:       "tool",
 		Content:    output,
 		ToolCallID: toolUseID,
@@ -172,7 +200,7 @@ func (s *Session) Observe(events chan any) {
 // fulll context to the LLM
 func (s *Session) SendMessage(ctx context.Context, message string) error {
 	// Add user message to conversation
-	s.messages = append(s.messages, ai.Message{
+	s.AddMessage(ai.Message{
 		Role:    "user",
 		Content: message,
 	})
@@ -217,14 +245,14 @@ func (s *Session) sendFullContext(ctx context.Context) error {
 		log.Println("[session] stream ended with content, updating conversation")
 
 		// Add assistant message
-		s.messages = append(s.messages, ai.Message{
+		s.AddMessage(ai.Message{
 			Role:    "assistant",
 			Content: strm.Content(),
 		})
 	}
 
 	if tc := strm.ToolCall(); tc != nil {
-		s.messages = append(s.messages, ai.Message{
+		s.AddMessage(ai.Message{
 			Role:       "assistant",
 			Content:    "Request to use tool: `" + tc.Name + "` with args: `" + string(tc.Input) + "`",
 			ToolCallID: tc.ID,

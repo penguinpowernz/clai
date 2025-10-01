@@ -94,7 +94,8 @@ In order of priority.
 - [ ] add `/clear` command to reset the prompt
 - [ ] add `/quit` command to exit
 - [ ] turn thinking output on and off with `/thinking` and config item
-- [ ] save chat history to file
+- [x] save chat history to file
+- [ ] load chat history from file
 - [ ] add `run_command` tool
 - [ ] support for git tool usage
 - [ ] automatic git commit for every change
