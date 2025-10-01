@@ -9,8 +9,6 @@ import (
 // NewClient creates a new AI client based on the provider configuration
 func NewClient(cfg *config.Config) (Provider, error) {
 	switch cfg.Provider {
-	case "anthropic":
-		return NewAnthropicClient(cfg)
 	case "openai":
 		return NewOpenAIClient(cfg)
 	case "ollama":

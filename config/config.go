@@ -10,7 +10,7 @@ import (
 // Config holds all application configuration
 type Config struct {
 	// AI Provider settings
-	Provider string `mapstructure:"provider"` // "anthropic", "openai", "ollama", "custom"
+	Provider string `mapstructure:"provider"` // "openai", "ollama", "custom"
 	Model    string `mapstructure:"model"`
 	APIKey   string `mapstructure:"api_key"`
 	BaseURL  string `mapstructure:"base_url"` // Custom API endpoint (for ollama, local models, etc.)
@@ -50,8 +50,8 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		// Defaults
-		Provider:     "anthropic",
-		Model:        "claude-sonnet-4-20250514",
+		Provider:     "ollama",
+		Model:        "gpt-oss:latest",
 		APIKey:       "",
 		BaseURL:      "", // Will be set based on provider if empty
 		SystemPrompt: getDefaultSystemPrompt(),
@@ -89,10 +89,6 @@ func Load() (*Config, error) {
 
 	// Load API key from environment if not in config
 	if cfg.APIKey == "" {
-		cfg.APIKey = os.Getenv("ANTHROPIC_API_KEY")
-		if cfg.APIKey == "" && cfg.Provider == "anthropic" {
-			cfg.APIKey = os.Getenv("CLAUDE_API_KEY")
-		}
 		if cfg.APIKey == "" && cfg.Provider == "openai" {
 			cfg.APIKey = os.Getenv("OPENAI_API_KEY")
 		}
@@ -115,11 +111,11 @@ func Load() (*Config, error) {
 func (c *Config) Validate() error {
 	// API key not required for local models like Ollama
 	if c.APIKey == "" && c.Provider != "ollama" && c.Provider != "custom" {
-		return fmt.Errorf("API key not found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable")
+		return fmt.Errorf("API key not found. Set OPENAI_API_KEY environment variable")
 	}
 
-	if c.Provider != "anthropic" && c.Provider != "openai" && c.Provider != "ollama" && c.Provider != "custom" {
-		return fmt.Errorf("invalid provider: %s (must be 'anthropic', 'openai', 'ollama', or 'custom')", c.Provider)
+	if c.Provider != "openai" && c.Provider != "ollama" && c.Provider != "custom" {
+		return fmt.Errorf("invalid provider: %s (must be 'openai', 'ollama', or 'custom')", c.Provider)
 	}
 
 	if c.Model == "" {
@@ -158,9 +154,9 @@ func Initialize() error {
 	// Create default config
 	defaultConfig := `# AI Code Assistant Configuration
 
-# AI Provider (anthropic, openai, ollama, or custom)
-provider: anthropic
-model: claude-sonnet-4-20250514
+# AI Provider (openai, ollama, or custom)
+provider: ollama
+model: gpt-oss:latest
 
 # Base URL for API endpoint (optional - defaults set per provider)
 # For Ollama: http://localhost:11434/v1
@@ -264,8 +260,6 @@ func maskAPIKey(key string) string {
 // getDefaultBaseURL returns the default base URL for a provider
 func getDefaultBaseURL(provider string) string {
 	switch provider {
-	case "anthropic":
-		return "https://api.anthropic.com"
 	case "openai":
 		return "https://api.openai.com/v1"
 	case "ollama":

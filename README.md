@@ -96,9 +96,9 @@ In order of priority.
 - [ ] turn thinking output on and off with `/thinking` and config item
 - [ ] save chat history to file
 - [ ] add `run_command` tool
-- [ ] working chat with anthropic models
 - [ ] support for git tool usage
 - [ ] automatic git commit for every change
+- [ ] ~~working chat with anthropic models~~
 
 # Code of conduct
 
