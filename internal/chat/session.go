@@ -205,6 +205,8 @@ func (s *Session) Observe(events chan any) {
 // SendMessage add a new user message to the conversation and then sends the
 // fulll context to the LLM
 func (s *Session) SendMessage(ctx context.Context, message string) error {
+	message = enhanceMessage(s.config, message)
+
 	// Add user message to conversation
 	s.AddMessage(ai.Message{
 		Role:    "user",

@@ -69,8 +69,6 @@ Send a prompt using CTRL+D, quit with CTRL+C or ESC...
 
 ## TODO
 
-In order of priority.
-
 - [x] terminal UI using bubbletea
 - [x] scrollable history
 - [x] specify system prompt in the config file
@@ -79,7 +77,7 @@ In order of priority.
 - [x] add reasoning output
 - [ ] get errors and system messages showing in the UI
 - [ ] cancel running inference with CTRL+C
-- [ ] send files in prompt when `@filename` is in the prompt
+- [x] send files in prompt when `@filename` is in the prompt
 - [x] add `search_file` and `list_files` tools
 - [x] ask for permission for the AI to use tools
 - [x] add `read_file` and `write_file` tools
@@ -91,9 +89,6 @@ In order of priority.
 - [x] save chat history to file
 - [ ] load chat history from file
 - [ ] add `run_command` tool
-- [ ] support for git tool usage
-- [ ] automatic git commit for every change
-- [ ] ~~working chat with anthropic models~~
 
 # Code of conduct
 
