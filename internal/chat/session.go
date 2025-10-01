@@ -9,6 +9,7 @@ import (
 
 	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
+	"github.com/penguinpowernz/clai/internal/commands"
 	"github.com/penguinpowernz/clai/internal/files"
 	"github.com/penguinpowernz/clai/internal/history"
 	"github.com/penguinpowernz/clai/internal/tools"
@@ -116,7 +117,9 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 			Content:    "Tool not found: `" + tc.Name + "`, available tools are: " + strings.Join(tools.GetNames(s.tools), ", "),
 			ToolCallID: tc.ID,
 		})
-		s.sendFullContext(ctx)
+		if err := s.sendFullContext(ctx); err != nil {
+			log.Println("[session] failed to send full context:", err)
+		}
 		return
 	}
 
@@ -142,13 +145,37 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 func (s *Session) handleCommand(ctx context.Context, cmd string) {
 	log.Println("[session] handling command:", cmd)
 
-	// res, err := commands.DefaultRegistry.Execute(ctx, cmd, &commands.Environment{
-	// 	Session:    s,
-	// 	Files:      s.files,
-	// 	Config:     s.config,
-	// 	WorkingDir: s.workingDir,
-	// })
+	res, err := commands.DefaultRegistry.Execute(ctx, cmd, &commands.Environment{
+		Session:    s,
+		Files:      s.files,
+		Config:     s.config,
+		WorkingDir: s.workingDir,
+	})
 
+	if err != nil {
+		log.Println("[session] failed to execute command:", err)
+		return
+	}
+
+	s.events <- ui.EventSlashCommand(*res)
+}
+
+func (s Session) Context() (system any, input []any, output []any) {
+	system = map[string]any{
+		"role":    "system",
+		"content": s.config.SystemPrompt,
+	}
+
+	for _, msg := range s.messages {
+		switch msg.Role {
+		case "assistant":
+			output = append(output, msg)
+		default:
+			input = append(input, msg)
+		}
+	}
+
+	return
 }
 
 func (s *Session) handleUIEvent(ctx context.Context, ev any) {

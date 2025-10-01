@@ -15,6 +15,7 @@ import (
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/penguinpowernz/clai/config"
 	"github.com/penguinpowernz/clai/internal/ai"
+	"github.com/penguinpowernz/clai/internal/commands"
 	"github.com/penguinpowernz/clai/internal/history"
 )
 
@@ -26,6 +27,8 @@ const (
 	maxLineLength = 120
 )
 
+type EventSlashCommand commands.Result
+type EventExit struct{}
 type EventStreamStarted string
 type EventStreamThink string
 type EventStreamEnded string
@@ -348,6 +351,59 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 	return m, listen(m)
 }
 
+func (m ChatModel) handleSubmit() (tea.Model, tea.Cmd) {
+	// If in tool permission mode, handle list selection ONLY
+	if m.pendingToolCall != nil {
+		return m.handleToolCallResponse()
+	}
+
+	// Regular message sending (only when NOT in tool permission mode)
+	if m.typing {
+		return m, nil
+	}
+
+	userMsg := strings.TrimSpace(m.textarea.Value())
+	if userMsg == "" {
+		return m, nil
+	}
+
+	// Add user message
+	m.addMessage("user", userMsg)
+
+	// Clear textarea
+	m.textarea.Reset()
+
+	if userMsg[0] != '/' {
+		m.thinking = true
+	}
+
+	m.currentStream.Reset()
+
+	// Update viewport
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
+
+	return m, tea.Batch(
+		m.spinner.Tick,
+		func() tea.Msg { m.out <- EventUserPrompt(userMsg); return nil },
+		listen(m),
+	)
+}
+
+func (m ChatModel) handleSlashCommand(ev EventSlashCommand) (tea.Model, tea.Cmd) {
+	res := commands.Result(ev)
+
+	if res.ShouldExit {
+		return m, tea.Quit
+	}
+
+	m.addMessage("slashcmd", res.Message)
+	m.viewport.SetContent(m.renderMessages())
+	m.viewport.GotoBottom()
+
+	return m, nil
+}
+
 func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		taCmd   tea.Cmd
@@ -407,6 +463,11 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		switch msg.String() {
+		case "q", "d", "u":
+			return m, nil
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			return m, tea.Quit
@@ -416,44 +477,14 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleToolCallResponse()
 			}
 
+			if msg := strings.TrimSpace(m.textarea.Value()); msg != "" && msg[0] == '/' {
+				return m.handleSubmit()
+			}
+
+			return m, nil
+
 		case tea.KeyCtrlD:
-			// If in tool permission mode, handle list selection ONLY
-			if m.pendingToolCall != nil {
-				return m.handleToolCallResponse()
-			}
-
-			// Regular message sending (only when NOT in tool permission mode)
-			if m.typing {
-				return m, nil
-			}
-
-			userMsg := strings.TrimSpace(m.textarea.Value())
-			if userMsg == "" {
-				return m, nil
-			}
-
-			// Add user message
-			m.addMessage(
-				"user", userMsg)
-
-			// Clear textarea
-			m.textarea.Reset()
-
-			if userMsg[0] != '/' {
-				m.thinking = true
-			}
-
-			m.currentStream.Reset()
-
-			// Update viewport
-			m.viewport.SetContent(m.renderMessages())
-			m.viewport.GotoBottom()
-
-			return m, tea.Batch(
-				m.spinner.Tick,
-				func() tea.Msg { m.out <- EventUserPrompt(userMsg); return nil },
-				listen(m),
-			)
+			return m.handleSubmit()
 
 		case tea.KeyCtrlL:
 			// Clear screen (only when NOT in tool permission mode)
@@ -462,6 +493,12 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewport.SetContent(welcomeMessage())
 			}
 		}
+
+	case EventSlashCommand:
+		return m.handleSlashCommand(msg)
+
+	case EventExit:
+		return m, tea.Quit
 
 	case EventStreamChunk:
 		m.onStreamChunk(string(msg))
@@ -602,6 +639,9 @@ func (m ChatModel) renderMessages() string {
 			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "tool":
+			b.WriteString(msg.Content)
+			b.WriteString("\n\n")
+		case "slashcmd":
 			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "thinking":

@@ -84,14 +84,15 @@ Send a prompt using CTRL+D, quit with CTRL+C or ESC...
 - [ ] add list `/models` command
 - [ ] add `/model <modelname>` command
 - [ ] add `/clear` command to reset the prompt
-- [ ] add `/quit` command to exit
+- [x] add `/tokens` to show how many tokens you're using
+- [x] add `/quit` command to exit
 - [ ] turn thinking output on and off with `/thinking` and config item
 - [x] save chat history to file
 - [ ] load chat history from file
 - [ ] add `run_command` tool
 
-# Code of conduct
+# Non-Toxic Code of conduct
 
 Our community is built on the principles of **meritocracy**, where contributions are valued based on their quality, relevance, and impact. We strive to create an inclusive environment where individuals can collaborate, learn, and grow **without the influence of personal biases, affiliations, or identities**.
 
-[Non-Toxic CoC](https://github.com/penguinpowernz/clai/blob/main/CODE_OF_CONDUCT.md)
+Read the full [Non-Toxic CoC](https://github.com/penguinpowernz/clai/blob/main/CODE_OF_CONDUCT.md)
