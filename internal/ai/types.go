@@ -70,7 +70,7 @@ func (m MessageChunk) Type() string {
 
 func (m MessageChunk) String() string {
 	if m.IsToolCall() {
-		return fmt.Sprintf("The AI wishes to call the tool: %s with args: %+v", m.ToolCall.Name)
+		return fmt.Sprintf("The AI wishes to call the tool: %s with args: %+v", m.ToolCall.Name, m.ToolCall.Input)
 	}
 
 	return m.Content

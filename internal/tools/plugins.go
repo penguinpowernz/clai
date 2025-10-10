@@ -27,7 +27,7 @@ func PluginTools(cfg config.Config) []Tool {
 		fn := filepath.Join(dir, file.Name())
 		def, err := loadToolDefinition(fn)
 		if err != nil {
-			log.Println("[tools] failed to load tool definition for %s:", fn, err)
+			log.Printf("[tools] failed to load tool definition for %s: %s", fn, err)
 			continue
 		}
 

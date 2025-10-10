@@ -122,18 +122,31 @@ When the program starts it will load the plugins Tool schemas and give it to the
 - [ ] get errors and system messages showing in the UI
 - [ ] cancel running inference with CTRL+C
 - [x] send files in prompt when `@filename` is in the prompt
-- [x] add `search_file` and `list_files` tools
+- [x] save chat history to file
+- [ ] load chat history from file
+
+### Tools
+
 - [x] ask for permission for the AI to use tools
-- [x] add `read_file` and `write_file` tools
+- [x] `search_file`
+- [x] `list_files`
+- [x] `read_file`
+- [x] `write_file`
+- [ ] `run_command`
+- [ ] `grep`
+- [ ] `find`
+- [ ] `mkdir`
+- [ ] `diff`
+- [ ] `filetype`
+
+### Commands
+
+- [ ] turn thinking output on and off with `/thinking` and config item
 - [x] add list `/models` command
 - [x] add `/model <modelname>` command
 - [ ] add `/clear` command to reset the prompt
 - [x] add `/tokens` to show how many tokens you're using
 - [x] add `/quit` command to exit
-- [ ] turn thinking output on and off with `/thinking` and config item
-- [x] save chat history to file
-- [ ] load chat history from file
-- [ ] add `run_command` tool
 
 # Non-Toxic Code of conduct
 

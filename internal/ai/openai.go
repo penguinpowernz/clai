@@ -167,7 +167,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 			if len(line) == 0 {
 				continue
 			}
-			log.Println("[client] line:", string(line))
+			// log.Println("[client] line:", string(line))
 
 			// SSE format: "data: {...}"
 			if !bytes.HasPrefix(line, []byte("data: ")) {
