@@ -39,11 +39,12 @@ type Config struct {
 	SessionDir     string `mapstructure:"session_dir"`      // Where to store sessions
 	SaveHistory    bool   `mapstructure:"save_history"`     // Save conversation history
 	MaxHistorySize int    `mapstructure:"max_history_size"` // Max messages to keep
+
+	PluginDir string `mapstructure:"plugin_dir"`
 }
 
-// Load loads the configuration from file and environment
-func Load() (*Config, error) {
-	cfg := &Config{
+func Default() *Config {
+	return &Config{
 		// Defaults
 		Provider:     "ollama",
 		Model:        "gpt-oss:latest",
@@ -71,7 +72,13 @@ func Load() (*Config, error) {
 		SaveHistory:    true,
 		MaxHistorySize: 100,
 		PermittedTools: []string{"list_files", "search_file"},
+		PluginDir:      "~/.clai/plugins",
 	}
+}
+
+// Load loads the configuration from file and environment
+func Load() (*Config, error) {
+	cfg := Default()
 
 	// Unmarshal viper config into struct
 	if err := viper.Unmarshal(cfg); err != nil {

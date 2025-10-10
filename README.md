@@ -57,6 +57,8 @@ max_file_size: 50000   # Max file size in bytes (50KB)
 session_dir: .aicode   # Where to store session data
 save_history: true     # Save conversation history
 max_history_size: 100  # Max messages to keep in history
+
+plugin_dir: ~/.clai/plugins # the directory to load tool plugins from
 ```
 
 To run it:
@@ -66,6 +68,48 @@ go run ./cmd/clai
 ```
 
 Send a prompt using CTRL+D, quit with CTRL+C or ESC...
+
+## Pluggable Tools
+
+Tools are loaded from the `plugin_dir` directory.  Tools can be written in any language.  They are loaded as plugins that can be used in the prompt.  They must follow a set of rules:
+
+1. The plugin must be in the `plugin_dir`
+1. The plugin must be executable
+1. The plugin must respond to the `--openai` flag with an OpenAI Tool schema:
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "search_files",
+    "description": "Search for files matching a pattern (glob) in a directory.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "Glob pattern to match (e.g., '*.go', 'src/**/*.js')"
+        },
+        "path": {
+          "type": "string",
+          "description": "Directory to search in. Defaults to current directory."
+        }
+      },
+      "required": ["pattern"]
+    }
+  }
+}
+```
+1. The plugin should accept the input on stdin
+```json
+{
+  "input": "<the arguments to the tool>",
+  "config": "<the current loadedd config>",
+  "cwd": "/path/to/current_working_directory"
+}
+```
+1. The plugin should output on stdout whatever it wants to send back to the AI
+
+When the program starts it will load the plugins Tool schemas and give it to the AI.  This allows you to dynamically add tools to the AI.
 
 ## TODO
 
