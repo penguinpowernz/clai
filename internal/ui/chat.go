@@ -60,6 +60,7 @@ type ChatModel struct {
 	typing        bool
 	runningTool   bool
 	thinking      bool
+	inThinkBlock  bool
 	err           error
 	width         int
 	height        int
@@ -254,6 +255,21 @@ func (m *ChatModel) onStreamThink(chunk string) {
 }
 
 func (m *ChatModel) onStreamChunk(chunk string) {
+	if chunk == "<think>" {
+		m.inThinkBlock = true
+		m.onStreamThink(chunk)
+		return
+	}
+
+	if m.inThinkBlock {
+		m.onStreamThink(chunk)
+		if chunk == "</think>" {
+			m.inThinkBlock = false
+			return
+		}
+		return
+	}
+
 	if m.thinking {
 		m.currentStream.Reset()
 		// Add a streaming assistant message
@@ -277,6 +293,8 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 func (m *ChatModel) onStreamEnded(finalContent string) {
 	m.typing = false
 	m.thinking = false
+
+	finalContent = stripThinkBlock(finalContent)
 
 	// Finalize the streaming message
 	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "assistant-streaming" {
