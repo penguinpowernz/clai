@@ -20,7 +20,7 @@ type OpenAIClient struct {
 	httpClient *http.Client
 	baseURL    string
 	apiKey     string
-	model      string
+	model      *string // pointer to model name in the config to allow us to change it for this session
 	tools      []tools.Tool
 }
 
@@ -35,7 +35,7 @@ func NewOpenAIClient(cfg *config.Config) (*OpenAIClient, error) {
 		httpClient: &http.Client{},
 		baseURL:    strings.TrimSuffix(cfg.BaseURL, "/"),
 		apiKey:     cfg.APIKey,
-		model:      cfg.Model,
+		model:      &cfg.Model,
 	}, nil
 }
 
@@ -44,7 +44,7 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 	allMessages := c.prepareMessages(messages)
 
 	reqBody := openAIRequest{
-		Model:       c.model,
+		Model:       *c.model,
 		Messages:    allMessages,
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
@@ -71,12 +71,46 @@ func (c *OpenAIClient) SetTools(tools []tools.Tool) {
 	c.tools = tools
 }
 
+func (c *OpenAIClient) ListModels() []string {
+	res, err := http.Get(c.baseURL + "/api/tags")
+	if err != nil {
+		return []string{}
+	}
+
+	defer res.Body.Close()
+
+	var modelsRes openAIModelResponse
+	if err := json.NewDecoder(res.Body).Decode(&modelsRes); err != nil {
+
+		return []string{err.Error(), res.Status}
+	}
+
+	var models []string
+	for _, model := range modelsRes.Models {
+		models = append(models, fmt.Sprintf("%s (%s parameters, %0.1fGB)", model.Name, model.Details.ParameterSize, model.Size/1024/1024))
+	}
+
+	return models
+}
+
+type openAIModelResponse struct {
+	Models []struct {
+		Name    string  `json:"name"`
+		Model   string  `json:"model"`
+		Size    float64 `json:"size"`
+		Details struct {
+			ParameterSize string `json:"parameter_size"`
+			Quantization  string `json:"quantization_level"`
+		}
+	} `json:"models"`
+}
+
 func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<-chan MessageChunk, error) {
 	// Prepend system prompt if it exists
 	allMessages := c.prepareMessages(messages)
 
 	reqBody := openAIRequest{
-		Model:       c.model,
+		Model:       *c.model,
 		Messages:    allMessages,
 		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
@@ -90,7 +124,7 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 	}
 
 	log.Println("[client] sending request: ", string(jsonData))
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -198,7 +232,7 @@ func (c *OpenAIClient) parseToolCall(call openAIToolCall) *ToolCall {
 
 func (c *OpenAIClient) GetModelInfo() ModelInfo {
 	return ModelInfo{
-		Name:              c.model,
+		Name:              *c.model,
 		Provider:          c.config.Provider,
 		MaxTokens:         c.config.MaxTokens,
 		SupportsStreaming: true,
@@ -211,7 +245,7 @@ func (c *OpenAIClient) makeRequest(ctx context.Context, reqBody openAIRequest) (
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/chat/completions", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

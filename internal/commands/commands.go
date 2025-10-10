@@ -124,6 +124,13 @@ func NewRegistry() *Registry {
 	})
 
 	r.Register(&Command{
+		Name:        "models",
+		Description: "Show available AI models",
+		Usage:       "/models",
+		Handler:     modelsHandler,
+	})
+
+	r.Register(&Command{
 		Name:        "tokens",
 		Aliases:     []string{"t"},
 		Description: "Show token usage statistics",
@@ -355,8 +362,17 @@ func modelHandler(ctx context.Context, args []string, env *Environment) (*Result
 	if len(args) == 0 {
 		info := env.Session.GetClient().GetModelInfo()
 		return &Result{
-			Message: fmt.Sprintf("Current model: %s (%s)\nMax tokens: %d",
+			Message: fmt.Sprintf("Current model: %s (%s)\nMax tokens: %d\nUse /model <model> to change models",
 				info.Name, info.Provider, info.MaxTokens),
+			ClearInput: true,
+		}, nil
+	}
+
+	if len(args) > 0 {
+		model := args[0]
+		env.Config.Model = model
+		return &Result{
+			Message:    fmt.Sprintf("Model changed to %s for this session", model),
 			ClearInput: true,
 		}, nil
 	}
@@ -364,6 +380,23 @@ func modelHandler(ctx context.Context, args []string, env *Environment) (*Result
 	// Change model (would need implementation)
 	return &Result{
 		Message:    "Changing models not yet implemented",
+		ClearInput: true,
+	}, nil
+}
+
+func modelsHandler(ctx context.Context, args []string, env *Environment) (*Result, error) {
+	// List available models
+
+	models := env.Session.GetClient().ListModels()
+
+	var sb strings.Builder
+	sb.WriteString("Available models:\n")
+	for _, model := range models {
+		sb.WriteString(fmt.Sprintf("  - %s\n", model))
+	}
+
+	return &Result{
+		Message:    sb.String(),
 		ClearInput: true,
 	}, nil
 }

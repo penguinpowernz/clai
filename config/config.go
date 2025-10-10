@@ -153,9 +153,9 @@ provider: ollama
 model: gpt-oss:latest
 
 # Base URL for API endpoint (optional - defaults set per provider)
-# For Ollama: http://localhost:11434/v1
+# For Ollama: http://localhost:11434/
 # For custom OpenAI-compatible APIs
-# base_url: http://localhost:11434/v1
+# base_url: http://localhost:11434/
 
 # API Key (or use environment variable)
 # Not required for Ollama or local models

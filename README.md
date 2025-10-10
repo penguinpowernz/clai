@@ -81,8 +81,8 @@ Send a prompt using CTRL+D, quit with CTRL+C or ESC...
 - [x] add `search_file` and `list_files` tools
 - [x] ask for permission for the AI to use tools
 - [x] add `read_file` and `write_file` tools
-- [ ] add list `/models` command
-- [ ] add `/model <modelname>` command
+- [x] add list `/models` command
+- [x] add `/model <modelname>` command
 - [ ] add `/clear` command to reset the prompt
 - [x] add `/tokens` to show how many tokens you're using
 - [x] add `/quit` command to exit

@@ -43,6 +43,9 @@ type Provider interface {
 	// GetModelInfo returns information about the current model
 	GetModelInfo() ModelInfo
 
+	// ListModels returns a list of available models
+	ListModels() []string
+
 	// SetTools sets the tools available to the AI
 	SetTools(tools []tools.Tool)
 }
