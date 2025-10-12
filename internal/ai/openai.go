@@ -46,11 +46,12 @@ func (c *OpenAIClient) SendMessage(ctx context.Context, messages []Message) (*Re
 	reqBody := openAIRequest{
 		Model:       *c.model,
 		Messages:    allMessages,
-		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      false,
 		Tools:       c.tools,
 	}
+
+	reqBody.Options.MaxTokens = c.config.MaxTokens
 
 	respBody, err := c.makeRequest(ctx, reqBody)
 	if err != nil {
@@ -112,12 +113,12 @@ func (c *OpenAIClient) StreamMessage(ctx context.Context, messages []Message) (<
 	reqBody := openAIRequest{
 		Model:       *c.model,
 		Messages:    allMessages,
-		MaxTokens:   c.config.MaxTokens,
 		Temperature: c.config.Temperature,
 		Stream:      true,
 		Tools:       c.tools,
 	}
 
+	reqBody.Options.MaxTokens = c.config.MaxTokens
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -303,13 +304,15 @@ func (c *OpenAIClient) prepareMessages(messages []Message) []openAIMessage {
 
 // OpenAI API types
 type openAIRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openAIMessage `json:"messages"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	Stream      bool            `json:"stream"`
-	Tools       []tools.Tool    `json:"tools,omitempty"`
-	ToolChoice  string          `json:"tool_choice,omitempty"`
+	Model    string          `json:"model"`
+	Messages []openAIMessage `json:"messages"`
+	Options  struct {
+		MaxTokens int `json:"num_ctx,omitempty"`
+	} `json:"options,omitempty"`
+	Temperature float64      `json:"temperature,omitempty"`
+	Stream      bool         `json:"stream"`
+	Tools       []tools.Tool `json:"tools,omitempty"`
+	ToolChoice  string       `json:"tool_choice,omitempty"`
 }
 
 type openAIMessage struct {
