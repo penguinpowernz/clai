@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
@@ -302,6 +303,12 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 		m.messages[len(m.messages)-1].Content = finalContent
 	}
 
+	// sometimes the agent will put the tool call inside the chat
+	if ev, yes := actuallyAToolCall(finalContent); yes {
+		m.in <- ev
+		return
+	}
+
 	// Reset current stream
 	m.currentStream.Reset()
 
@@ -309,6 +316,22 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	m.viewport.SetContent(m.renderMessages())
 	m.viewport.GotoBottom()
 	log.Println("[ui] we ended! final was ", finalContent)
+}
+
+var reToolCallCheck = regexp.MustCompile(`^Request to use tool: .* with args: .*`)
+var reToolParse = regexp.MustCompile("^Request to use tool: `(.*)` with args: (.*)$")
+
+func actuallyAToolCall(finalContent string) (EventToolCall, bool) {
+	if !reToolCallCheck.MatchString(finalContent) {
+		return EventToolCall{}, false
+	}
+
+	matches := reToolParse.FindStringSubmatch(finalContent)
+
+	tool := matches[1]
+	args := matches[2]
+
+	return EventToolCall{Name: tool, Input: json.RawMessage(args)}, false
 }
 
 func (m *ChatModel) onAssistantMessage(msg string) {
