@@ -31,6 +31,7 @@ type Session struct {
 	workingDir string
 	tools      []tools.Tool
 	mu         sync.Mutex
+	currStrm   *Stream
 
 	permitToolCall chan bool
 	permittedTools map[string]bool
@@ -187,6 +188,13 @@ func (s *Session) handleUIEvent(ctx context.Context, ev any) {
 			s.SendMessage(ctx, string(msg))
 		}
 
+	case ui.EventCancelStream:
+		log.Println("[session] Canceling stream...")
+		s.currStrm.Close()
+		s.currStrm.Wait()
+		log.Println("[session] stream cancelled")
+		s.events <- ui.EventStreamCancelled{}
+
 	case ui.EventPermitToolUse:
 		log.Printf("[session] Tool permission granted for: %s", msg.Name)
 		s.permitToolCall <- true // tell the stream loop to continue
@@ -258,6 +266,7 @@ func (s *Session) sendFullContext(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	strm := NewStream(s.client)
+	s.currStrm = strm
 	strm.OnChunk(s.handleStreamChunk)
 
 	strm.OnStart(func() {

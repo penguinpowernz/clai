@@ -108,10 +108,12 @@ func (s *Stream) Start(ctx context.Context, cctx []ai.Message) (err error) {
 }
 
 func (s *Stream) Close() {
+	log.Println("[stream] closing")
 	s.cancel()
 }
 
 func (s *Stream) Wait() {
+	log.Println("[stream] waiting")
 	<-s.waiter.Done()
 }
 

@@ -30,6 +30,8 @@ const (
 
 type EventSlashCommand commands.Result
 type EventExit struct{}
+type EventCancelStream struct{}
+type EventStreamCancelled struct{}
 type EventStreamStarted string
 type EventStreamThink string
 type EventStreamEnded string
@@ -399,7 +401,7 @@ func (m ChatModel) handleSubmit() (tea.Model, tea.Cmd) {
 	}
 
 	// Regular message sending (only when NOT in tool permission mode)
-	if m.typing {
+	if m.typing || m.thinking || m.inThinkBlock {
 		return m, nil
 	}
 
@@ -443,6 +445,13 @@ func (m ChatModel) handleSlashCommand(ev EventSlashCommand) (tea.Model, tea.Cmd)
 	m.viewport.GotoBottom()
 
 	return m, nil
+}
+
+func (m ChatModel) onStreamCancelled() {
+	log.Println("[ui] STREAM CANCELLED")
+	m.typing = false
+	m.thinking = false
+	m.inThinkBlock = false
 }
 
 func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -510,7 +519,19 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.Type {
-		case tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyEsc:
+			log.Println("[ui] Cancel pushed...")
+
+			return m, func() tea.Msg {
+				if m.thinking || m.inThinkBlock || m.typing {
+					log.Println("[ui] Canceling stream...")
+					m.out <- EventCancelStream{}
+					log.Println("[ui] Cancelled stream...")
+				}
+				return nil
+			}
+
+		case tea.KeyCtrlC:
 			return m, tea.Quit
 
 		case tea.KeyEnter:
@@ -554,6 +575,10 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventStreamThink:
 		m.onStreamThink(string(msg))
+		return m, listen(m)
+
+	case EventStreamCancelled:
+		m.onStreamCancelled()
 		return m, listen(m)
 
 	case EventStreamStarted:
@@ -642,7 +667,7 @@ func (m ChatModel) View() string {
 		tempViewport.GotoBottom()
 		viewportContent = tempViewport.View()
 	} else {
-		help = helpStyle.Render("Ctrl+D: Send • Ctrl+L: Clear • Ctrl+C: Quit")
+		help = helpStyle.Render("Ctrl+D: Send • Ctrl+L: Clear • Ctrl+C: Quit • ESC: Stop AI")
 		inputArea = m.textarea.View()
 		viewportContent = m.viewport.View()
 	}
