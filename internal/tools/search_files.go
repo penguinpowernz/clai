@@ -13,6 +13,7 @@ import (
 func init() { DefaultTools = append(DefaultTools, _searchFiles) }
 
 var _searchFiles = Tool{
+	exec: searchFiles,
 	Type: "function",
 	Function: &FunctionSchema{
 		Name:        "search_files",
@@ -32,7 +33,6 @@ var _searchFiles = Tool{
 			Required: []string{"pattern"},
 		},
 	},
-	exec: searchFiles,
 }
 
 func searchFiles(cfg config.Config, input json.RawMessage, workingDir string) (string, error) {

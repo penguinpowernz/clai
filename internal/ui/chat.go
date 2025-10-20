@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -514,7 +515,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "q", "d", "u":
+		case "q", "d", "u", "j", "k":
+			// Ignore these keys
 			return m, nil
 		}
 
@@ -705,7 +707,7 @@ func (m ChatModel) renderMessages() string {
 			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "tool":
-			b.WriteString(msg.Content)
+			b.WriteString(toolStyle.Render(msg.Content))
 			b.WriteString("\n\n")
 		case "slashcmd":
 			b.WriteString(msg.Content)
@@ -752,6 +754,7 @@ var (
 	cursorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
 	helpStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	thinkingStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+	toolStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("227"))
 	errorStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 )
 
