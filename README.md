@@ -2,7 +2,7 @@
 
 A **work-in-progress** chat CLI written in golang that can talk to Ollama (and others).
 
-The current status is that it is working with self hosted Ollama models.  Tool use is working but has not been extensively tested. It is quite simple for now, and things are subject to change.
+The current status is that it is working with self hosted Ollama models.  Tool use is working but has not been extensively tested. There are some slash commands as well like changing the current model. It is quite simple for now, and things are subject to change.
 
 <img width="862" height="259" alt="image" src="https://github.com/user-attachments/assets/bc5d3972-c985-46d4-8fff-eb8e9af64873" />
 
@@ -71,9 +71,9 @@ Send a prompt using CTRL+D, quit with CTRL+C or ESC...
 
 ## Pluggable Tools
 
-Tools are loaded from the `plugin_dir` directory.  Tools can be written in any language.  They are loaded as plugins that can be used in the prompt.  They must follow a set of rules:
+You can extend the tools available to the agent/LLM by putting plugins in the `plugin_dir` directory.  Tools can be written in any language.  They are loaded as plugins that can be used in the prompt.  They must follow a set of rules:
 
-1. The plugin must be in the `plugin_dir`
+1. The plugin must be in the `plugin_dir` specified by the config
 1. The plugin must be executable
 1. The plugin must respond to the `--openai` flag with an OpenAI Tool schema:
 ```json
@@ -103,13 +103,13 @@ Tools are loaded from the `plugin_dir` directory.  Tools can be written in any l
 ```json
 {
   "input": "<the arguments to the tool>",
-  "config": "<the current loadedd config>",
+  "config": "<the current loaded config INCLUDING API KEYS!>",
   "cwd": "/path/to/current_working_directory"
 }
 ```
 1. The plugin should output on stdout whatever it wants to send back to the AI
 
-When the program starts it will load the plugins Tool schemas and give it to the AI.  This allows you to dynamically add tools to the AI.
+When the program starts it will load the tool schemas from all the plugins and give them to the AI.  This allows you to dynamically add tools to the AI, without needing to change the code of the agent.
 
 ## TODO
 
@@ -120,8 +120,8 @@ When the program starts it will load the plugins Tool schemas and give it to the
 - [x] working chat with ollama models
 - [x] add reasoning output
 - [ ] get errors and system messages showing in the UI
-- [ ] cancel running inference with CTRL+C
-- [x] send files in prompt when `@filename` is in the prompt
+- [ ] cancel running inference with CTRL+C/ESC
+- [x] send files in prompt when you use `@filename` (prefix the filename with the `@`)
 - [x] save chat history to file
 - [ ] load chat history from file
 
@@ -147,6 +147,7 @@ When the program starts it will load the plugins Tool schemas and give it to the
 - [ ] add `/clear` command to reset the prompt
 - [x] add `/tokens` to show how many tokens you're using
 - [x] add `/quit` command to exit
+- [ ] add `/export` command to export chat history to a file
 
 # Non-Toxic Code of conduct
 
