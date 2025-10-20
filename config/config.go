@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ghodss/yaml"
 	"github.com/spf13/viper"
 )
 
@@ -136,6 +137,19 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *Config) String() string {
+	data, _ := yaml.Marshal(c)
+	return string(data)
+}
+
+func (c *Config) Get(v string) interface{} {
+	return viper.Get(v)
+}
+
+func (c *Config) Set(v string, value interface{}) {
+	viper.Set(v, value)
 }
 
 // Initialize creates a default config file

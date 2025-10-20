@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -25,6 +26,7 @@ type Session interface {
 	GetClient() ai.Provider
 	ClearMessages()
 	Context() (any, []any, []any)
+	Export() []ai.Message
 }
 
 // Command represents a slash command
@@ -144,6 +146,22 @@ func NewRegistry() *Registry {
 		Description: "Show or update system prompt",
 		Usage:       "/system [new prompt]",
 		Handler:     systemPromptHandler,
+	})
+
+	r.Register(&Command{
+		Name:        "export",
+		Aliases:     []string{"e"},
+		Description: "Export the conversation to a file",
+		Usage:       "/export <filename>",
+		Handler:     exportHandler,
+	})
+
+	r.Register(&Command{
+		Name:        "config",
+		Aliases:     []string{"cfg"},
+		Description: "Show or update configuration",
+		Usage:       "/config [key] [value]",
+		Handler:     configHandler,
 	})
 
 	return r
@@ -426,11 +444,13 @@ func tokensHandler(ctx context.Context, args []string, env *Environment) (*Resul
   %s:  %5d tokens
   %s: %5d tokens
   %s:  %5d tokens
+  %s:  %5d tokens
 	`,
 			style.Render("System"), system,
 			style.Render("Input"), input,
 			style.Render("Output"), output,
 			style.Render("Total"), total,
+			style.Render("Max"), env.Session.GetClient().GetModelInfo().MaxTokens,
 		),
 		ClearInput: true,
 	}, nil
@@ -457,4 +477,75 @@ func systemPromptHandler(ctx context.Context, args []string, env *Environment) (
 		Message:    "System prompt updated for this session",
 		ClearInput: true,
 	}, nil
+}
+
+func exportHandler(ctx context.Context, args []string, env *Environment) (*Result, error) {
+	if len(args) == 0 {
+		return &Result{
+			Message:    "Usage: /export <filename>",
+			ClearInput: true,
+		}, nil
+	}
+
+	filename := args[0]
+	messages := env.Session.Export()
+
+	// make filename safe
+	filename = safeFilename(filename, env.WorkingDir)
+
+	w, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return &Result{
+			Message:    fmt.Sprintf("Failed to export: %v", err),
+			ClearInput: true,
+		}, nil
+	}
+
+	if err := json.NewEncoder(w).Encode(messages); err != nil {
+		return &Result{
+			Message:    fmt.Sprintf("Failed to export: %v", err),
+			ClearInput: true,
+		}, nil
+	}
+
+	return &Result{
+		Message:    fmt.Sprintf("Exported conversation to %s", filename),
+		ClearInput: true,
+	}, nil
+}
+
+func configHandler(ctx context.Context, args []string, env *Environment) (*Result, error) {
+	if len(args) == 0 {
+		// print entire config
+		return &Result{
+			Message:    env.Config.String(),
+			ClearInput: true,
+		}, nil
+	}
+
+	if len(args) == 1 {
+		// show the value of a specific key
+		key := args[0]
+		val := env.Config.Get(key)
+
+		return &Result{
+			Message:    fmt.Sprintf("%s: %s", key, val),
+			ClearInput: true,
+		}, nil
+	}
+
+	// set the config value
+	env.Config.Set(args[0], args[1])
+
+	return &Result{
+		Message:    fmt.Sprintf("Set %s to %s", args[0], args[1]),
+		ClearInput: true,
+	}, nil
+}
+
+func safeFilename(fn, cwd string) string {
+	fn = strings.ReplaceAll(fn, "../", "/")
+	fn = strings.ReplaceAll(fn, "./", "/")
+	fn = strings.TrimPrefix(fn, "/")
+	return fn
 }

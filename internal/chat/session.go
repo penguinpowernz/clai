@@ -46,6 +46,10 @@ func (s *Session) AddObserver(observer UIObserver) {
 	observer.Observe(s.events)
 }
 
+func (s *Session) Export() []ai.Message {
+	return s.messages
+}
+
 func (s *Session) ClearMessages() {
 	s.messages = make([]ai.Message, 0)
 }
