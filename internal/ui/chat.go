@@ -8,7 +8,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -33,9 +33,9 @@ type UIObserver interface {
 // ChatModel is the bubbletea model for the REPL
 type ChatModel struct {
 	ctx           context.Context
-	cfg           config.Config
+	cfg           *config.Config
+	prompt        textinput.Model
 	viewport      viewport.Model
-	textarea      textarea.Model
 	spinner       spinner.Model
 	messages      []ai.Message
 	typing        bool
@@ -55,31 +55,35 @@ type ChatModel struct {
 	selectedOption        int
 }
 
-func NewChatModel(ctx context.Context, cfg config.Config) *ChatModel {
-	ta := textarea.New()
-	ta.Placeholder = "Type your message... (Ctrl+D to send, Ctrl+C to quit)"
-	ta.Focus()
-	ta.Prompt = "│ "
-	ta.CharLimit = 0
-	ta.SetWidth(80)
-	ta.SetHeight(3)
-	ta.ShowLineNumbers = false
-	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
-	ta.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
+func NewChatModel(ctx context.Context, cfg *config.Config) *ChatModel {
+	ti := textinput.New()
+	// ti.Placeholder = "Type your message..."
+	ti.Focus()
+	ti.Prompt = ""
+	ti.Placeholder = "Type your message..."
+	ti.CharLimit = 0
+	ti.Width = 80
+	ti.PromptStyle.Background(lipgloss.Color("235"))
 
-	vp := viewport.New(80, 20)
-	vp.SetContent(welcomeMessage())
+	// ti.PromptStyle
+	// ti.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
+	// ti.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
+	vp := viewport.New(80, 20)
+	vp.MouseWheelEnabled = true
+
 	model := ChatModel{
+		height:                20,
+		width:                 80,
 		ctx:                   ctx,
 		cfg:                   cfg,
-		textarea:              ta,
-		viewport:              vp,
+		prompt:                ti,
 		spinner:               sp,
+		viewport:              vp,
 		messages:              make([]ai.Message, 0),
 		currentStream:         &strings.Builder{},
 		in:                    make(chan any),
@@ -116,16 +120,14 @@ func (m *ChatModel) Observe(events chan any) {
 func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		taCmd   tea.Cmd
-		vpCmd   tea.Cmd
 		spCmd   tea.Cmd
 		listCmd tea.Cmd
 	)
 
 	// Only update textarea if we're not in tool permission mode
 	if m.pendingToolCall == nil {
-		m.textarea, taCmd = m.textarea.Update(msg)
+		m.prompt, taCmd = m.prompt.Update(msg)
 	}
-	m.viewport, vpCmd = m.viewport.Update(msg)
 	m.spinner, spCmd = m.spinner.Update(msg)
 
 	// Don't update the old list component when in tool permission mode
@@ -144,16 +146,15 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Resize components
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 6 // Leave room for textarea and borders
-		m.textarea.SetWidth(msg.Width - 4)
+		m.viewport.Height = msg.Height - 1 // Leave room for textarea and borders
+		m.prompt.Width = msg.Width - 4
 
 		// Re-render messages with new width
 		if m.pendingToolCall != nil {
 			m.toolPermissionList.SetWidth(msg.Width - 4)
 			m.toolPermissionList.SetHeight(5)
 		}
-		m.viewport.SetContent(m.renderMessages() + "\n" + m.toolPermissionList.View())
-		m.viewport.GotoBottom()
+		// m.viewport.SetContent(m.renderMessages() + "\n" + m.toolPermissionList.View())
 
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -173,7 +174,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventStreamEnded:
 		m.onStreamEnded(string(msg))
-		return m, listen(m)
+		return m, textinput.Blink
 
 	case EventStreamThink:
 		m.onStreamThink(string(msg))
@@ -218,7 +219,8 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	}
 
-	return m, tea.Batch(taCmd, vpCmd, spCmd, listCmd)
+	// log.Printf("[ui] Unhandled message: %T", msg)
+	return m, tea.Batch(taCmd, spCmd, listCmd)
 }
 
 func (m ChatModel) View() string {
@@ -243,67 +245,71 @@ func (m ChatModel) View() string {
 
 	var help string
 	var inputArea string
-	var viewportContent string
+	var viewportContent = m.renderMessages()
 
 	// If we have a pending tool call, show the permission list instead of textarea
 	if m.pendingToolCall != nil {
-		help = helpStyle.Render("↑/↓: Navigate • Ctrl+D/ENTER: Select • Ctrl+C: Quit")
+		help = helpStyle.Render("↑/↓: Navigate • ENTER: Select • Ctrl+C: Quit")
 		inputArea = m.renderToolPermissionOptions()
 		status = "👮 Tool Permission Required"
 
 		// Reduce viewport height to make room for the tool permission list
 		// We need extra space for the list (about 5 lines)
-		tempViewport := viewport.New(m.viewport.Width, m.viewport.Height-5)
-		tempViewport.SetContent(m.renderMessages())
-		tempViewport.GotoBottom()
-		viewportContent = tempViewport.View()
+		// tempViewport := viewport.New(m.viewport.Width, m.viewport.Height-5)
+		// tempViewport.SetContent(m.renderMessages())
+		// tempViewport.GotoBottom()
+		// viewportContent = tempViewport.View()
 	} else {
-		help = helpStyle.Render("Ctrl+D: Send • Ctrl+L: Clear • Ctrl+C: Quit • ESC: Stop AI")
-		inputArea = m.textarea.View()
-		viewportContent = m.viewport.View()
+		help = helpStyle.Render("ENTER: Send • Ctrl+L: Clear • Ctrl+C: Quit • ESC: Stop AI")
+		inputArea = m.prompt.View()
+		// viewportContent = m.viewport.View()
 	}
 
-	return fmt.Sprintf(
-		"%s\n\n%s\n\n%s\n%s",
-		titleStyle.Render("AI Code Assistant"),
+	m.viewport.SetContent(fmt.Sprintf(
+		"%s\n%s\n\n%s %s\n\n%s",
+		welcomeMessage(),
 		viewportContent,
+		userStyle.Render("\u2588"),
 		inputArea,
 		lipgloss.JoinHorizontal(lipgloss.Left, status, "  ", help),
-	)
+	))
+
+	m.viewport.GotoBottom()
+	return m.viewport.View()
 }
 
 func (m ChatModel) renderMessages() string {
 	if len(m.messages) == 0 {
-		return welcomeMessage()
+		return ""
 	}
 
 	var b strings.Builder
 	for _, msg := range m.messages {
 		switch msg.Role {
 		case "user":
-			b.WriteString(userStyle.Render("You: "))
+			b.WriteString(userStyle.Render("\u2588 "))
 			b.WriteString(msg.Content)
 			b.WriteString("\n\n")
 		case "assistant", "assistant-streaming":
-			b.WriteString(assistantStyle.Render("Assistant: "))
 			b.WriteString(msg.Content)
 			if msg.Role == "assistant-streaming" {
 				b.WriteString(cursorStyle.Render("▋"))
 			}
-			b.WriteString("\n\n")
+			b.WriteString("\n")
 		case "system":
-			b.WriteString(systemStyle.Render("System: "))
-			b.WriteString(msg.Content)
+			b.WriteString(systemStyle.Render(msg.Content))
 			b.WriteString("\n\n")
 		case "tool":
 			b.WriteString(toolStyle.Render(msg.Content))
 			b.WriteString("\n\n")
 		case "slashcmd":
-			b.WriteString(msg.Content)
+			b.WriteString(systemStyle.Render(msg.Content))
 			b.WriteString("\n\n")
 		case "thinking":
-			b.WriteString(thinkingStyle.Render(msg.Content))
-			b.WriteString("\n\n")
+			if m.cfg.ShowThinking {
+				b.WriteString(thinkingStyle.Render(msg.Content))
+				b.WriteString("\n\n")
+			}
 		}
 	}
 
@@ -315,28 +321,21 @@ func welcomeMessage() string {
 		Foreground(lipgloss.Color("34")).
 		Render(`
 		
-
-		░██████████████████████████████████████████████████████████
-		░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ 
-		
-                █████████  █████         █████████   ███████ 
-               ███░░░░░███░░███         ███░░░░░███ ░░░███   
-              ███     ░░░  ░███        ░███    ░███   ░███   
-             ░███          ░███        ░███████████   ░███   
-             ░███          ░███        ░███░░░░░███   ░███   
-             ░░███     ███ ░███      █ ░███    ░███   ░███   
-              ░░█████████  ███████████ █████   █████ ███████ 
-               ░░░░░░░░░  ░░░░░░░░░░░ ░░░░░   ░░░░░ ░░░░░░░  
-
-		░██████████████████████████████████████████████████████████
-		░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+        █████████  █████         █████████   ███████ 
+       ███░░░░░███░░███         ███░░░░░███ ░░░███   
+      ███     ░░░  ░███        ░███    ░███   ░███   
+     ░███          ░███        ░███████████   ░███   
+     ░███          ░███        ░███░░░░░███   ░███   
+     ░░███     ███ ░███      █ ░███    ░███   ░███   
+      ░░█████████  ███████████ █████   █████ ███████ 
+       ░░░░░░░░░  ░░░░░░░░░░░ ░░░░░   ░░░░░ ░░░░░░░  
+			 
 `)
 
 }
 
 // Styles
 var (
-	titleStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")).MarginBottom(1)
 	userStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
 	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true)
 	systemStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("21")).Bold(true)

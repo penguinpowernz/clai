@@ -89,7 +89,7 @@ Run without arguments to enter interactive mode, or provide a message to send im
 			history.SetSessionID(sessionID)
 			history.SetConfig(*cfg)
 
-			cm := ui.NewChatModel(ctx, *cfg)
+			cm := ui.NewChatModel(ctx, cfg)
 			session := chat.NewSession(cfg, aiClient, sessionID)
 			session.AddObserver(cm)
 			cm.AddObserver(session)

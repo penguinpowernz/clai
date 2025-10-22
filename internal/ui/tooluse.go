@@ -65,8 +65,6 @@ func (m ChatModel) onRunningTool(msg EventRunningTool) {
 
 	m.addMessage("system", fmt.Sprintf("Running tool: %s with args: %s", msg.Name, msg.Input))
 
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 var reToolCallCheck = regexp.MustCompile(`^Request to use tool: .* with args: .*`)
@@ -111,7 +109,7 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 	m.selectedOption = 0 // Reset to first option
 
 	// Blur textarea to remove focus
-	m.textarea.Blur()
+	m.prompt.Blur()
 
 	// Format tool arguments for display
 	argsStr := ""
@@ -122,7 +120,4 @@ func (m *ChatModel) OnToolCallReceived(toolCall EventToolCall) {
 	// Add a system message about the tool call
 	m.addMessage("assistant", fmt.Sprintf("I need to use the tool \"%s\" with args %s", toolCall.Name, argsStr))
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }

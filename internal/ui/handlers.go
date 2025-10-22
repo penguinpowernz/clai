@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/penguinpowernz/clai/internal/ai"
 	"github.com/penguinpowernz/clai/internal/commands"
@@ -14,9 +14,6 @@ func (m *ChatModel) onSystemMessage(msg string) {
 	// Add system message to chat messages
 	m.addMessage("system", msg)
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 func (m *ChatModel) onStreamStarted() {
@@ -27,12 +24,12 @@ func (m *ChatModel) onStreamStarted() {
 	m.thinking = true
 	m.addMessage("thinking", m.currentStream.String())
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 func (m *ChatModel) onStreamThink(chunk string) {
+	if chunk == "</think>" || chunk == "<think>" {
+		return
+	}
 	m.currentStream.WriteString(chunk)
 
 	// Update the last streaming message
@@ -40,8 +37,6 @@ func (m *ChatModel) onStreamThink(chunk string) {
 		m.messages[len(m.messages)-1].Content = m.currentStream.String()
 	}
 
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 func (m *ChatModel) onStreamChunk(chunk string) {
@@ -74,10 +69,6 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "assistant-streaming" {
 		m.messages[len(m.messages)-1].Content = m.currentStream.String()
 	}
-
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 func (m *ChatModel) onStreamEnded(finalContent string) {
@@ -101,9 +92,6 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	// Reset current stream
 	m.currentStream.Reset()
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 	log.Println("[ui] we ended! final was ", finalContent)
 }
 
@@ -111,14 +99,11 @@ func (m *ChatModel) onAssistantMessage(msg string) {
 	// Add assistant message to chat messages
 	m.addMessage("assistant", msg)
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 }
 
 func (m ChatModel) Init() tea.Cmd {
 	// No need to manually set system message handler anymore
-	return textarea.Blink
+	return textinput.Blink
 }
 
 func listen(m ChatModel) tea.Cmd {
@@ -157,11 +142,8 @@ func (m ChatModel) handleToolCallResponse() (tea.Model, tea.Cmd) {
 	// Reset tool call mode and restore textarea focus
 	m.pendingToolCall = nil
 	m.selectedOption = 0
-	m.textarea.Focus()
+	m.prompt.Focus()
 
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 	return m, listen(m)
 }
 
@@ -176,7 +158,7 @@ func (m ChatModel) handleSubmit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	userMsg := strings.TrimSpace(m.textarea.Value())
+	userMsg := strings.TrimSpace(m.prompt.Value())
 	if userMsg == "" {
 		return m, nil
 	}
@@ -185,17 +167,13 @@ func (m ChatModel) handleSubmit() (tea.Model, tea.Cmd) {
 	m.addMessage("user", userMsg)
 
 	// Clear textarea
-	m.textarea.Reset()
+	m.prompt.Reset()
 
 	if userMsg[0] != '/' {
 		m.thinking = true
 	}
 
 	m.currentStream.Reset()
-
-	// Update viewport
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 
 	return m, tea.Batch(
 		m.spinner.Tick,
@@ -212,13 +190,11 @@ func (m ChatModel) handleSlashCommand(ev EventSlashCommand) (tea.Model, tea.Cmd)
 	}
 
 	m.addMessage("slashcmd", res.Message)
-	m.viewport.SetContent(m.renderMessages())
-	m.viewport.GotoBottom()
 
-	return m, nil
+	return m, listen(m)
 }
 
-func (m ChatModel) onStreamCancelled() {
+func (m *ChatModel) onStreamCancelled() {
 	log.Println("[ui] STREAM CANCELLED")
 	m.typing = false
 	m.thinking = false
@@ -269,11 +245,7 @@ func (m *ChatModel) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.handleToolCallResponse()
 		}
 
-		if msg := strings.TrimSpace(m.textarea.Value()); msg != "" && msg[0] == '/' {
-			return m.handleSubmit()
-		}
-
-		return m, nil
+		return m.handleSubmit()
 
 	case tea.KeyCtrlD:
 		return m.handleSubmit()
@@ -282,7 +254,7 @@ func (m *ChatModel) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Clear screen (only when NOT in tool permission mode)
 		if m.pendingToolCall == nil {
 			m.messages = make([]ai.Message, 0)
-			m.viewport.SetContent(welcomeMessage())
+			welcomeMessage()
 		}
 	}
 	return m, nil
