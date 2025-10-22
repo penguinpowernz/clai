@@ -1,6 +1,6 @@
 # CLAI
 
-A **work-in-progress** chat CLI written in golang that can talk to Ollama (and others).
+A **work-in-progress** chat CLI written in golang that only talks to Ollama.
 
 The current status is that it is working with self hosted Ollama models.  Tool use is working but has not been extensively tested. There are some slash commands as well like changing the current model. It is quite simple for now, and things are subject to change.
 
@@ -141,13 +141,27 @@ When the program starts it will load the tool schemas from all the plugins and g
 
 ### Commands
 
-- [ ] turn thinking output on and off with `/thinking` and config item
+- [x] turn thinking output on and off with `/thinking` and config item
 - [x] add list `/models` command
 - [x] add `/model <modelname>` command
 - [ ] add `/clear` command to reset the prompt
 - [x] add `/tokens` to show how many tokens you're using
 - [x] add `/quit` command to exit
 - [ ] add `/export` command to export chat history to a file
+
+# FAQ
+
+## Why shouldn't I use opencode?
+
+It looks cool and solves the exact same problem, but this is a pure golang - no typescript or javascript junk.  If you have no problem with javascript etc you should probably use that one.
+
+## Why shouldn't I use shell-ai?
+
+Currently it's buggier than this one, and its all written in javascript, which I personally despise.
+
+## Why shouldn't I use claude code?
+
+Because you would rather spend your money on a fancy graphics card than another online service.
 
 # Non-Toxic Code of conduct
 
