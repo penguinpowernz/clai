@@ -22,6 +22,7 @@ type Config struct {
 
 	// Behavior settings
 	AutoApply    bool    `mapstructure:"auto_apply"`    // Auto-apply code changes
+	ShowThinking bool    `mapstructure:"show_thinking"` // Show thinking indicator
 	ContextFiles int     `mapstructure:"context_files"` // Max files to include
 	MaxTokens    int     `mapstructure:"max_tokens"`    // Max tokens per request
 	Temperature  float64 `mapstructure:"temperature"`   // Model temperature
@@ -57,6 +58,7 @@ func Default() *Config {
 		MaxTokens:    4096,
 		Temperature:  0.7,
 		Verbose:      false,
+		ShowThinking: true,
 		Editor:       getDefaultEditor(),
 		ExcludePatterns: []string{
 			"node_modules/",
@@ -189,6 +191,7 @@ model: gpt-oss:latest
 
 # Behavior
 auto_apply: false      # Automatically apply code changes
+show_thinking: true    # Show thinking animation
 context_files: 5       # Max files to include in context
 max_tokens: 4096       # Max tokens per request
 temperature: 0.7       # Model temperature (0.0 - 1.0)

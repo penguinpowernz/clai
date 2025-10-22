@@ -86,6 +86,14 @@ func NewRegistry() *Registry {
 	})
 
 	r.Register(&Command{
+		Name:        "thinking",
+		Aliases:     []string{"think"},
+		Description: "Toggle showing the thinking messages on or off",
+		Usage:       "/thinking",
+		Handler:     thinkingHandler,
+	})
+
+	r.Register(&Command{
 		Name:        "exit",
 		Aliases:     []string{"quit", "q"},
 		Description: "Exit the application",
@@ -539,6 +547,20 @@ func configHandler(ctx context.Context, args []string, env *Environment) (*Resul
 
 	return &Result{
 		Message:    fmt.Sprintf("Set %s to %s", args[0], args[1]),
+		ClearInput: true,
+	}, nil
+}
+
+func thinkingHandler(ctx context.Context, args []string, env *Environment) (*Result, error) {
+	var msg = "Enabled showing thinking"
+	if env.Config.ShowThinking {
+		msg = "Disabled showing thinking"
+	}
+
+	env.Config.ShowThinking = !env.Config.ShowThinking
+
+	return &Result{
+		Message:    msg,
 		ClearInput: true,
 	}, nil
 }
