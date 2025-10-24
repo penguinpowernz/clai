@@ -133,11 +133,11 @@ When the program starts it will load the tool schemas from all the plugins and g
 - [x] `read_file`
 - [x] `write_file`
 - [ ] `run_command`
-- [ ] `grep`
-- [ ] `find`
-- [ ] `mkdir`
-- [ ] `diff`
-- [ ] `filetype`
+- [x] `grep`
+- [x] `find`
+- [x] `mkdir`
+- [x] `diff`
+- [x] `filetype`
 
 ### Commands
 
