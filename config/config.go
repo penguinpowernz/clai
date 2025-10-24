@@ -249,6 +249,14 @@ func Display(cfg *Config) error {
 	return nil
 }
 
+func Save(fn string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(fn, data, 0644)
+}
+
 // Set updates a configuration value
 func Set(key, value string) error {
 	viper.Set(key, value)

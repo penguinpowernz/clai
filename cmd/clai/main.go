@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -64,6 +65,16 @@ Run without arguments to enter interactive mode, or provide a message to send im
 			return initConfig()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			cfgFile := viper.GetString("config")
+			cfgFile = strings.Replace(cfgFile, "~", os.Getenv("HOME"), 1)
+
+			// create the config file if it doesn't exist
+			if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+				if err := config.Save(cfgFile, config.Default()); err != nil {
+					return fmt.Errorf("failed to save default config: %w", err)
+				}
+			}
+
 			cfg, err := config.Load()
 			if err != nil {
 				return fmt.Errorf("failed to load config: %w", err)
@@ -108,7 +119,7 @@ Run without arguments to enter interactive mode, or provide a message to send im
 	}
 
 	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.clai.yml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "~/.clai.yml", "config file (default is $HOME/.clai.yml)")
 	rootCmd.PersistentFlags().String("model", "", "AI model to use (e.g., gpt-oss:latest)")
 	rootCmd.PersistentFlags().String("provider", "", "AI provider (ollama, openai)")
 	rootCmd.PersistentFlags().String("session", "", "The session ID to load history from")
