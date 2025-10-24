@@ -249,13 +249,11 @@ func (m *ChatModel) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyCtrlD:
 		return m.handleSubmit()
-
-	case tea.KeyCtrlL:
-		// Clear screen (only when NOT in tool permission mode)
-		if m.pendingToolCall == nil {
-			m.messages = make([]ai.Message, 0)
-			welcomeMessage()
-		}
 	}
+
 	return m, nil
+}
+
+func (m *ChatModel) onClear() {
+	m.messages = make([]ai.Message, 0)
 }

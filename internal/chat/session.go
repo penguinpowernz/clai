@@ -52,6 +52,7 @@ func (s *Session) Export() []ai.Message {
 
 func (s *Session) ClearMessages() {
 	s.messages = make([]ai.Message, 0)
+	s.uievents <- ui.EventClear{}
 }
 
 func (s *Session) GetClient() ai.Provider {

@@ -196,6 +196,10 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.onAssistantMessage(string(msg))
 		return m, listen(m)
 
+	case EventClear:
+		m.onClear()
+		return m, listen(m)
+
 	case EventRunningTool:
 		m.onRunningTool(msg)
 
@@ -260,7 +264,7 @@ func (m ChatModel) View() string {
 		// tempViewport.GotoBottom()
 		// viewportContent = tempViewport.View()
 	} else {
-		help = helpStyle.Render("ENTER: Send • Ctrl+L: Clear • Ctrl+C: Quit • ESC: Stop AI")
+		help = helpStyle.Render("ENTER: Send • Ctrl+C: Quit • ESC: Stop AI")
 		inputArea = m.prompt.View()
 		// viewportContent = m.viewport.View()
 	}

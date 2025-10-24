@@ -144,10 +144,10 @@ When the program starts it will load the tool schemas from all the plugins and g
 - [x] turn thinking output on and off with `/thinking` and config item
 - [x] add list `/models` command
 - [x] add `/model <modelname>` command
-- [ ] add `/clear` command to reset the prompt
+- [x] add `/clear` command to reset the prompt
 - [x] add `/tokens` to show how many tokens you're using
 - [x] add `/quit` command to exit
-- [ ] add `/export` command to export chat history to a file
+- [x] add `/export` command to export chat history to a file
 
 # FAQ
 

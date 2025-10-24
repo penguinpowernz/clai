@@ -7,6 +7,7 @@ import (
 
 type EventSlashCommand commands.Result
 type EventExit struct{}
+type EventClear struct{}
 type EventCancelStream struct{}
 type EventStreamCancelled struct{}
 type EventStreamStarted string
