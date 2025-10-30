@@ -121,7 +121,7 @@ When the program starts it will load the tool schemas from all the plugins and g
 - [x] add reasoning output
 - [ ] add session support
 - [ ] use up arrow to select previous messages
-- [ ] switch models with a l
+- [x] switch models with a select list
 - [ ] get errors and system messages showing in the UI
 - [ ] cancel running inference with CTRL+C/ESC
 - [x] send files in prompt when you use `@filename` (prefix the filename with the `@`)

@@ -151,6 +151,21 @@ func (s *Session) handleToolCall(ctx context.Context, tc *ai.ToolCall) {
 func (s *Session) handleCommand(ctx context.Context, cmd string) {
 	log.Println("[session] handling command:", cmd)
 
+	// if we get the models command, prepare a list of models to send to the user for selection
+	if strings.HasPrefix(cmd, "/models") {
+		models := s.client.ListModels()
+		for i, name := range models {
+			name = strings.Split(name, " ")[0]
+			models[i] = name
+
+			if name == s.config.Model {
+				models[i] = "*" + name
+			}
+		}
+		s.events <- ui.EventModelSelection(models)
+		return
+	}
+
 	res, err := commands.DefaultRegistry.Execute(ctx, cmd, &commands.Environment{
 		Session:    s,
 		Files:      s.files,
@@ -215,6 +230,13 @@ func (s *Session) handleUIEvent(ctx context.Context, ev any) {
 		log.Printf("[session] Tool use cancelled for: %s\n", msg.Name)
 		s.permitToolCall <- false // tell the stream loop to continue
 		log.Printf("[session] told stream loop to continue")
+
+	case ui.EventModelSelected:
+		model := string(msg)
+		if !strings.Contains(model, "*") {
+			s.config.Model = model
+			s.events <- ui.EventSystemMsg("Model changed to " + model)
+		}
 
 	default:
 		log.Printf("[session] Unknown UI event: %T %+v", ev, ev)

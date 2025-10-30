@@ -12,6 +12,12 @@ import (
 	"github.com/penguinpowernz/clai/internal/ai"
 )
 
+const (
+	optAllowToolThisTime    = "Allow to run this time only"
+	optAllowToolThisSession = "Allow, and don't ask again this session"
+	optDisallowTool         = "Don't allow to run the tool, give the prompt back"
+)
+
 func createToolPermissionList() list.Model {
 	items := []list.Item{
 		list.Item(permissionItem{title: optAllowToolThisTime, desc: ""}),

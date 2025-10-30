@@ -25,3 +25,6 @@ type EventAssistantMessage string
 type EventRunningTool ai.ToolCall
 type EventRunningToolDone string
 type EventToolOutput string
+type EventListDone struct{ title, option string }
+type EventModelSelection []string
+type EventModelSelected string

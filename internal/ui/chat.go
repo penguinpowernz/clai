@@ -19,11 +19,9 @@ import (
 )
 
 const (
-	optAllowToolThisTime    = "Allow to run this time only"
-	optAllowToolThisSession = "Allow, and don't ask again this session"
-	optDisallowTool         = "Don't allow to run the tool, give the prompt back"
-
 	maxLineLength = 120
+
+	titleSelectModel = "Select the model to use"
 )
 
 type UIObserver interface {
@@ -130,12 +128,18 @@ func (m *ChatModel) Observe(events chan any) {
 
 func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
-		cmds    []tea.Cmd
-		taCmd   tea.Cmd
-		spCmd   tea.Cmd
-		listCmd tea.Cmd
-		vpCmd   tea.Cmd
+		cmds                              []tea.Cmd
+		cmd, taCmd, spCmd, listCmd, vpCmd tea.Cmd
 	)
+
+	if m.currList != nil {
+		m.currList, cmd = m.currList.Update(msg)
+		if cmd != nil {
+			log.Println("[ui.update] setting lcmd")
+			cmds = append(cmds, cmd)
+			//			return nil, cmd
+		}
+	}
 
 	// Only update textarea if we're not in tool permission mode
 	if m.pendingToolCall == nil {
@@ -184,7 +188,22 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tea.KeyMsg:
-		return m.handleKeyPress(msg)
+		if m.currList == nil {
+			return m.handleKeyPress(msg)
+		}
+
+	case EventModelSelection:
+		l := NewSimpleList(titleSelectModel, msg...)
+		m.currList = l
+
+	case EventListDone:
+		log.Printf("[ui.event] list done %+v", msg)
+		switch msg.title {
+		case titleSelectModel:
+			cmds = append(cmds, func() tea.Msg { m.out <- EventModelSelected(msg.option); return nil })
+		}
+		m.currList = nil
+		m.prompt.Reset()
 
 	case EventSlashCommand:
 		return m.handleSlashCommand(msg)
@@ -278,8 +297,9 @@ func (m ChatModel) View() string {
 	var inputArea string
 	var viewportContent = m.viewport.View()
 
+	switch {
 	// If we have a pending tool call, show the permission list instead of textarea
-	if m.pendingToolCall != nil {
+	case m.pendingToolCall != nil:
 		help = helpStyle.Render("↑/↓: Navigate • ENTER: Select • Ctrl+C: Quit")
 		inputArea = m.renderToolPermissionOptions()
 		status = "👮 Tool Permission Required"
@@ -290,7 +310,12 @@ func (m ChatModel) View() string {
 		// tempViewport.SetContent(m.renderMessages())
 		// tempViewport.GotoBottom()
 		// viewportContent = tempViewport.View()
-	} else {
+	case m.currList != nil:
+
+		help = helpStyle.Render("↑/↓: Navigate • ENTER: Select • Ctrl+C: Quit")
+		inputArea = m.currList.View()
+		status = "Selection Required"
+	default:
 		help = helpStyle.Render("ENTER: Send • Ctrl+C: Quit • ESC: Stop AI")
 		inputArea = m.prompt.View()
 	}
