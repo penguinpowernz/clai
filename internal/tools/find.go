@@ -64,9 +64,17 @@ func find(cfg config.Config, input json.RawMessage, workingDir string) (string, 
 		return "", err
 	}
 
+	okLines := []string{}
+	for _, line := range strings.Split(sout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !IsExcluded(cfg, line) {
+			okLines = append(okLines, line)
+		}
+	}
+
 	return jsonDump(map[string]any{
 		"cmd":        cmdStr,
-		"stdout":     sout.String(),
+		"stdout":     strings.Join(okLines, "\n"),
 		"stderr":     serr.String(),
 		"exitstatus": cmd.ProcessState.ExitCode(),
 	}), nil
