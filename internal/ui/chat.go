@@ -34,7 +34,6 @@ type UIObserver interface {
 type ChatModel struct {
 	ctx           context.Context
 	cfg           *config.Config
-	prompt        textinput.Model
 	viewport      viewport.Model
 	spinner       spinner.Model
 	messages      []ai.Message
@@ -47,6 +46,8 @@ type ChatModel struct {
 	height        int
 	currentStream *strings.Builder
 	in, out       chan any
+	prompt Prompt
+	userIsScrolling bool
 
 	// Tool permission selection
 	pendingToolCall       *ai.ToolCall
@@ -56,25 +57,15 @@ type ChatModel struct {
 }
 
 func NewChatModel(ctx context.Context, cfg *config.Config) *ChatModel {
-	ti := textinput.New()
-	// ti.Placeholder = "Type your message..."
-	ti.Focus()
-	ti.Prompt = ""
-	ti.Placeholder = "Type your message..."
-	ti.CharLimit = 0
-	ti.Width = 80
-	ti.PromptStyle.Background(lipgloss.Color("235"))
-
-	// ti.PromptStyle
-	// ti.FocusedStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
-	// ti.BlurredStyle.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("34"))
-
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	vp := viewport.New(80, 20)
 	vp.MouseWheelEnabled = true
+	vp.MouseWheelDelta = 3
+
+	ti := NewPrompt()
 
 	model := ChatModel{
 		height:                20,
@@ -91,6 +82,7 @@ func NewChatModel(ctx context.Context, cfg *config.Config) *ChatModel {
 		toolPermissionList:    createToolPermissionList(),
 		toolPermissionOptions: []string{optAllowToolThisTime, optAllowToolThisSession, optDisallowTool},
 		selectedOption:        0,
+		prompt:             ti,
 	}
 
 	return &model
@@ -102,10 +94,29 @@ func (m *ChatModel) addMessage(role, msg string) {
 		Content: msg,
 	})
 
+	m.viewport.SetContent(m.renderMessages())
+
+	if !m.userIsScrolling {
+		m.viewport.GotoBottom()
+	}
+
 	if m.cfg.SaveHistory {
 		if err := history.SaveHistory("ui", m.messages); err != nil {
 			log.Println("[ui] Error saving history:", err)
 		}
+	}
+}
+
+func (m *ChatModel) updateMessage(role, chunk string) {
+	m.currentStream.WriteString(chunk)
+
+	// Update the last streaming message
+	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == role {
+		m.messages[len(m.messages)-1].Content = m.currentStream.String()
+	}
+	m.viewport.SetContent(m.renderMessages())
+	if !m.userIsScrolling {
+		m.viewport.GotoBottom()
 	}
 }
 
@@ -119,20 +130,26 @@ func (m *ChatModel) Observe(events chan any) {
 
 func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
+		cmds    []tea.Cmd
 		taCmd   tea.Cmd
 		spCmd   tea.Cmd
 		listCmd tea.Cmd
+		vpCmd   tea.Cmd
 	)
 
 	// Only update textarea if we're not in tool permission mode
 	if m.pendingToolCall == nil {
 		m.prompt, taCmd = m.prompt.Update(msg)
+		cmds = append(cmds, taCmd)
 	}
 	m.spinner, spCmd = m.spinner.Update(msg)
+	m.viewport, vpCmd = m.viewport.Update(msg)
+	cmds = append(cmds, spCmd, vpCmd)
 
 	// Don't update the old list component when in tool permission mode
 	if m.pendingToolCall == nil {
 		m.toolPermissionList, listCmd = m.toolPermissionList.Update(msg)
+		cmds = append(cmds, listCmd)
 	}
 
 	if evt := fmt.Sprintf("%T", msg); evt[0:8] == "ui.Event" {
@@ -147,7 +164,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Resize components
 		m.viewport.Width = msg.Width
 		m.viewport.Height = msg.Height - 1 // Leave room for textarea and borders
-		m.prompt.Width = msg.Width - 4
+		m.prompt.SetWidth(msg.Width - 4)
 
 		// Re-render messages with new width
 		if m.pendingToolCall != nil {
@@ -155,6 +172,16 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toolPermissionList.SetHeight(5)
 		}
 		// m.viewport.SetContent(m.renderMessages() + "\n" + m.toolPermissionList.View())
+		m.viewport.SetContent(m.renderMessages())
+
+	case tea.MouseMsg:
+		if msg.Button == tea.MouseButtonWheelUp {
+			m.userIsScrolling = true
+		}
+
+		if msg.Button == tea.MouseButtonWheelDown && m.viewport.AtBottom() {
+			m.userIsScrolling = false
+		}
 
 	case tea.KeyMsg:
 		return m.handleKeyPress(msg)
@@ -167,7 +194,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventStreamChunk:
 		m.onStreamChunk(string(msg))
-		return m, listen(m)
+		cmds = append(cmds, listen(m))
 
 	case EventSystemMsg:
 		m.onSystemMessage(string(msg))
@@ -178,7 +205,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventStreamThink:
 		m.onStreamThink(string(msg))
-		return m, listen(m)
+		cmds = append(cmds, listen(m))
 
 	case EventStreamCancelled:
 		m.onStreamCancelled()
@@ -186,7 +213,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventStreamStarted:
 		m.onStreamStarted()
-		return m, listen(m)
+		cmds = append(cmds, listen(m))
 
 	case EventToolCall:
 		m.OnToolCallReceived(msg)
@@ -198,7 +225,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case EventClear:
 		m.onClear()
-		return m, listen(m)
+		cmds = append(cmds, listen(m))
 
 	case EventRunningTool:
 		m.onRunningTool(msg)
@@ -224,7 +251,7 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// log.Printf("[ui] Unhandled message: %T", msg)
-	return m, tea.Batch(taCmd, spCmd, listCmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m ChatModel) View() string {
@@ -249,7 +276,7 @@ func (m ChatModel) View() string {
 
 	var help string
 	var inputArea string
-	var viewportContent = m.renderMessages()
+	var viewportContent = m.viewport.View()
 
 	// If we have a pending tool call, show the permission list instead of textarea
 	if m.pendingToolCall != nil {
@@ -266,31 +293,51 @@ func (m ChatModel) View() string {
 	} else {
 		help = helpStyle.Render("ENTER: Send • Ctrl+C: Quit • ESC: Stop AI")
 		inputArea = m.prompt.View()
-		// viewportContent = m.viewport.View()
 	}
 
-	m.viewport.SetContent(fmt.Sprintf(
-		"%s\n%s\n\n%s %s\n\n%s",
-		welcomeMessage(),
+	var x []string
+	var nlcount int
+	lines := strings.Split(viewportContent, "\n")
+	if len(lines) <= m.viewport.Height {
+
+		for _, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				nlcount++
+				continue
+			}
+
+			if nlcount > 0 {
+				x = append(x, strings.Repeat("\n", nlcount))
+				nlcount = 0
+			}
+
+			x = append(x, line)
+		}
+
+		diff := len(lines) - len(x)
+		viewportContent = strings.Repeat("\n", diff) + strings.Join(x, "\n")
+	}
+
+	return fmt.Sprintf(
+		"%s\n\n%s\n\n%s",
 		viewportContent,
-		userStyle.Render("\u2588"),
 		inputArea,
 		lipgloss.JoinHorizontal(lipgloss.Left, status, "  ", help),
-	))
-
-	m.viewport.GotoBottom()
-	return m.viewport.View()
+	)
 }
 
 func (m ChatModel) renderMessages() string {
 	if len(m.messages) == 0 {
-		return ""
+		return welcomeMessage()
 	}
 
 	var b strings.Builder
+	b.WriteString(welcomeMessage())
+
 	for _, msg := range m.messages {
 		switch msg.Role {
 		case "user":
+			b.WriteString("\n\n")
 			b.WriteString(userStyle.Render("\u2588 "))
 			b.WriteString(msg.Content)
 			b.WriteString("\n\n")

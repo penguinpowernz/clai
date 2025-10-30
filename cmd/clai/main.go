@@ -107,7 +107,7 @@ Run without arguments to enter interactive mode, or provide a message to send im
 
 			// Enter interactive mode
 			go session.InteractiveMode(ctx)
-			p := tea.NewProgram(cm, tea.WithAltScreen())
+			p := tea.NewProgram(cm, tea.WithMouseCellMotion(), tea.WithAltScreen())
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("error running interactive mode: %w", err)
 			}

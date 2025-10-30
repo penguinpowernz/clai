@@ -30,13 +30,8 @@ func (m *ChatModel) onStreamThink(chunk string) {
 	if chunk == "</think>" || chunk == "<think>" {
 		return
 	}
-	m.currentStream.WriteString(chunk)
 
-	// Update the last streaming message
-	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "thinking" {
-		m.messages[len(m.messages)-1].Content = m.currentStream.String()
-	}
-
+	m.updateMessage("thinking", chunk)
 }
 
 func (m *ChatModel) onStreamChunk(chunk string) {
@@ -63,12 +58,7 @@ func (m *ChatModel) onStreamChunk(chunk string) {
 		m.typing = true
 	}
 
-	m.currentStream.WriteString(chunk)
-
-	// Update the last streaming message
-	if len(m.messages) > 0 && m.messages[len(m.messages)-1].Role == "assistant-streaming" {
-		m.messages[len(m.messages)-1].Content = m.currentStream.String()
-	}
+	m.updateMessage("assistant-streaming", chunk)
 }
 
 func (m *ChatModel) onStreamEnded(finalContent string) {
@@ -92,6 +82,8 @@ func (m *ChatModel) onStreamEnded(finalContent string) {
 	// Reset current stream
 	m.currentStream.Reset()
 
+	m.viewport.SetContent(m.renderMessages())
+
 	log.Println("[ui] we ended! final was ", finalContent)
 }
 
@@ -103,6 +95,7 @@ func (m *ChatModel) onAssistantMessage(msg string) {
 
 func (m ChatModel) Init() tea.Cmd {
 	// No need to manually set system message handler anymore
+	m.viewport.SetContent(m.renderMessages())
 	return textinput.Blink
 }
 
